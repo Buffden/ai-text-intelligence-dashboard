@@ -3,12 +3,13 @@ name: Export Excalidraw Diagrams
 on:
   pull_request:
     paths:
-      - '**.excalidraw'
+      - '**/*.excalidraw'
+
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
-      - '**.excalidraw'
+      - '**/*.excalidraw'
+
   workflow_dispatch:
 
 jobs:
@@ -26,25 +27,42 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Playwright dependencies
+      - name: Install excalidraw-brute-export-cli
+        run: npm install excalidraw-brute-export-cli
+
+      - name: Install Playwright + Firefox
         run: npx playwright install --with-deps firefox
 
-      - name: Export all .excalidraw files to SVG
+      - name: Export .excalidraw files → diagrams/
         run: |
-          find . -name "*.excalidraw" -not -path "*/.git/*" | while read file; do
-            dir=$(dirname "$file")
-            filename=$(basename "$file" .excalidraw)
-            output_dir="diagrams/${dir#./}"
-            mkdir -p "$output_dir"
-            npx excalidraw-brute-export-cli -i "$file" -f svg -o "$output_dir/${filename}.svg" -s 1
-            echo "Exported: $file → $output_dir/${filename}.svg"
+          set -eo pipefail
+          find . -name "*.excalidraw" \
+            -not -path "./.git/*" \
+            -not -path "./node_modules/*" \
+          | while IFS= read -r file; do
+            rel="${file#./}"
+            out="diagrams/${rel%.excalidraw}.svg"
+            mkdir -p "$(dirname "$out")"
+            echo "Exporting: $rel → $out"
+            npx excalidraw-brute-export-cli \
+              -i "$file" \
+              --format svg \
+              --scale 1 \
+              --background 1 \
+              --embed-scene 0 \
+              --dark-mode 0 \
+              -o "$out"
           done
 
-      - name: Commit and push exported SVGs
-        if: github.event_name != 'pull_request'
+      - name: Commit exported SVGs to main
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add diagrams/
-          git diff --cached --quiet || git commit -m "chore: auto-export excalidraw diagrams [skip ci]"
-          git push
+          if git diff --staged --quiet; then
+            echo "No diagram changes to commit."
+          else
+            git commit -m "chore: auto-export excalidraw diagrams [skip ci]"
+            git push
+          fi
