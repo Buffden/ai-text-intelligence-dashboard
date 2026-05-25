@@ -22,10 +22,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install PlantUML
+        run: sudo apt-get install -y plantuml
+
       - name: Export .puml files → diagrams/
-        uses: cloudbees/plantuml-github-action@master
-        with:
-          args: -tsvg -r -o diagrams/ **/*.puml
+        run: |
+          set -eo pipefail
+          find . -name "*.puml" \
+            -not -path "./.git/*" \
+          | while IFS= read -r file; do
+            rel="${file#./}"
+            out="diagrams/${rel%.puml}.svg"
+            mkdir -p "$(dirname "$out")"
+            echo "Exporting: $rel → $out"
+            plantuml -tsvg -o "$(pwd)/$(dirname "$out")" "$file"
+          done
 
       - name: Commit exported SVGs to main
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
