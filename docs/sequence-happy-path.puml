@@ -1,0 +1,38 @@
+@startuml sequence-happy-path
+
+title Sequence Diagram 1 — Happy Path
+
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+
+actor       Client
+participant "TextAnalysisController" as Controller
+participant "TextAnalysisService"    as Service
+participant "ChatClient\n(Spring AI)" as ChatClient
+participant "OpenAI API"             as OpenAI
+
+Client -> Controller : POST /api/analyze\n{ "text": "..." }
+
+Controller -> Controller : @Valid — validate request\n(not blank, max 5000 chars)
+
+Controller -> Service : analyze(request)
+
+Service -> Service : buildPrompt(text)
+
+Service -> ChatClient : call(prompt)
+
+ChatClient -> OpenAI : HTTPS request\n(model: gpt-4o, temperature: 0)
+
+OpenAI --> ChatClient : raw JSON response
+
+ChatClient --> Service : ChatResponse
+
+Service -> Service : parseResponse(raw JSON)\n→ AnalysisResponse
+
+Service -> Service : logUsage(\n  inputTokens, outputTokens,\n  model, latencyMs\n)
+
+Service --> Controller : AnalysisResponse
+
+Controller --> Client : 200 OK\n{\n  "summary": "...",\n  "sentiment": "positive",\n  "confidence": 0.91,\n  "keyTopics": [...],\n  "wordCountEstimate": 142\n}
+
+@enduml
