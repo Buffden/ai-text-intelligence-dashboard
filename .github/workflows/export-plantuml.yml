@@ -1,0 +1,41 @@
+name: Export PlantUML Diagrams
+
+on:
+  pull_request:
+    paths:
+      - '**/*.puml'
+
+  push:
+    branches: [main]
+    paths:
+      - '**/*.puml'
+
+  workflow_dispatch:
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Export .puml files → diagrams/
+        uses: cloudbees/plantuml-github-action@master
+        with:
+          args: -tsvg -r -o diagrams/ **/*.puml
+
+      - name: Commit exported SVGs to main
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add diagrams/
+          if git diff --staged --quiet; then
+            echo "No diagram changes to commit."
+          else
+            git commit -m "chore: auto-export plantuml diagrams [skip ci]"
+            git push
+          fi
