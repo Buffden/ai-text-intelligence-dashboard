@@ -34,7 +34,7 @@ jobs:
             filename=$(basename "$file" .excalidraw)
             output_dir="diagrams/${dir#./}"
             mkdir -p "$output_dir"
-            npx excalidraw-brute-export-cli --light-mode --no-embed-scene --scale 1 "$file" "$output_dir/${filename}.svg"
+            npx excalidraw-brute-export-cli -i "$file" -f svg -o "$output_dir/${filename}.svg"
             echo "Exported: $file → $output_dir/${filename}.svg"
           done
 
