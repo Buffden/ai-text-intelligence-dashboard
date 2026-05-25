@@ -1,0 +1,13 @@
+spring:
+  application:
+    name: ai-text-intelligence-dashboard
+  ai:
+    openai:
+      api-key: ${OPENAI_KEY}
+      chat:
+        options:
+          model: gpt-4o
+          temperature: 0.0
+
+server:
+  port: 8080

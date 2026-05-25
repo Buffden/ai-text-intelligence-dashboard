@@ -1,0 +1,21 @@
+# Environment
+.env
+.env.*
+
+# macOS
+.DS_Store
+
+# Maven
+backend/target/
+backend/.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Node (for excalidraw export workflow)
+node_modules/
+
+# Logs
+*.log
