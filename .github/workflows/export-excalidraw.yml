@@ -24,10 +24,8 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install excalidraw-brute-export-cli and Playwright
-        run: |
-          npm install -g excalidraw-brute-export-cli
-          npx playwright install --with-deps firefox
+      - name: Install Playwright dependencies
+        run: npx playwright install --with-deps firefox
 
       - name: Export all .excalidraw files to SVG
         run: |
@@ -36,7 +34,7 @@ jobs:
             filename=$(basename "$file" .excalidraw)
             output_dir="diagrams/${dir#./}"
             mkdir -p "$output_dir"
-            excalidraw_export --light-mode --no-embed-scene --scale 1 "$file" "$output_dir/${filename}.svg"
+            npx excalidraw-brute-export-cli --light-mode --no-embed-scene --scale 1 "$file" "$output_dir/${filename}.svg"
             echo "Exported: $file → $output_dir/${filename}.svg"
           done
 
