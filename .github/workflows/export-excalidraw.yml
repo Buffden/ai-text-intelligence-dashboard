@@ -1,0 +1,50 @@
+name: Export Excalidraw Diagrams
+
+on:
+  pull_request:
+    paths:
+      - '**.excalidraw'
+  push:
+    branches:
+      - main
+    paths:
+      - '**.excalidraw'
+  workflow_dispatch:
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install excalidraw-brute-export-cli and Playwright
+        run: |
+          npm install -g excalidraw-brute-export-cli
+          npx playwright install --with-deps firefox
+
+      - name: Export all .excalidraw files to SVG
+        run: |
+          find . -name "*.excalidraw" -not -path "*/.git/*" | while read file; do
+            dir=$(dirname "$file")
+            filename=$(basename "$file" .excalidraw)
+            output_dir="diagrams/${dir#./}"
+            mkdir -p "$output_dir"
+            excalidraw_export --light-mode --no-embed-scene --scale 1 "$file" "$output_dir/${filename}.svg"
+            echo "Exported: $file → $output_dir/${filename}.svg"
+          done
+
+      - name: Commit and push exported SVGs
+        if: github.event_name != 'pull_request'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add diagrams/
+          git diff --cached --quiet || git commit -m "chore: auto-export excalidraw diagrams [skip ci]"
+          git push
