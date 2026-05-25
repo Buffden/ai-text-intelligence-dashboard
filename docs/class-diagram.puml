@@ -1,0 +1,102 @@
+@startuml class-diagram
+
+skinparam classAttributeIconSize 0
+skinparam classFontStyle bold
+skinparam linetype ortho
+
+package "controller" {
+  class TextAnalysisController {
+    - service: TextAnalysisService
+    + analyze(request: AnalyzeRequest): ResponseEntity<AnalysisResponse>
+  }
+}
+
+package "service" {
+  class TextAnalysisService {
+    - chatClient: ChatClient
+    + analyze(request: AnalyzeRequest): AnalysisResponse
+    - buildPrompt(text: String): String
+    - parseResponse(raw: String): AnalysisResponse
+    - logUsage(usage: Usage, latencyMs: long): void
+  }
+}
+
+package "dto" {
+  class AnalyzeRequest {
+    - text: String
+  }
+
+  class AnalysisResponse {
+    - summary: String
+    - sentiment: String
+    - confidence: double
+    - keyTopics: List<String>
+    - wordCountEstimate: int
+  }
+
+  class ErrorResponse {
+    - error: String
+    - code: ErrorCode
+  }
+
+  enum ErrorCode {
+    INVALID_INPUT
+    LLM_UNAVAILABLE
+    PARSE_ERROR
+  }
+}
+
+package "exception" {
+  class LlmUnavailableException {
+    + LlmUnavailableException(message: String, cause: Throwable)
+  }
+
+  class ParseException {
+    + ParseException(message: String, raw: String)
+  }
+}
+
+package "exception.handler" {
+  class GlobalExceptionHandler {
+    + handleValidation(ex: MethodArgumentNotValidException): ResponseEntity<ErrorResponse>
+    + handleLlmUnavailable(ex: LlmUnavailableException): ResponseEntity<ErrorResponse>
+    + handleParseError(ex: ParseException): ResponseEntity<ErrorResponse>
+    + handleGeneric(ex: Exception): ResponseEntity<ErrorResponse>
+  }
+}
+
+' ── Dependencies ──────────────────────────────────────────────
+TextAnalysisController --> TextAnalysisService : uses
+
+TextAnalysisService --> ChatClient : uses
+
+' ── Data flow (usage, not ownership) ──────────────────────────
+TextAnalysisController ..> AnalyzeRequest : accepts
+TextAnalysisController ..> AnalysisResponse : returns
+
+TextAnalysisService ..> AnalyzeRequest : reads
+TextAnalysisService ..> AnalysisResponse : produces
+
+' ── Exceptions thrown by service ──────────────────────────────
+TextAnalysisService ..> LlmUnavailableException : «throws»
+TextAnalysisService ..> ParseException : «throws»
+
+' ── Exception handler intercepts ──────────────────────────────
+GlobalExceptionHandler ..> LlmUnavailableException : «handles»
+GlobalExceptionHandler ..> ParseException : «handles»
+GlobalExceptionHandler ..> ErrorResponse : produces
+GlobalExceptionHandler ..> ErrorCode : uses
+
+' ── ErrorResponse uses ErrorCode enum ─────────────────────────
+ErrorResponse --> ErrorCode : uses
+
+' ── Exception hierarchy ────────────────────────────────────────
+LlmUnavailableException --|> RuntimeException
+ParseException --|> RuntimeException
+
+' ── External dependency (Spring AI) ───────────────────────────
+class ChatClient <<external>> {
+  + call(prompt: Prompt): ChatResponse
+}
+
+@enduml
