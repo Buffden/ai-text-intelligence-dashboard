@@ -1,0 +1,67 @@
+@startuml sequence-llm-failure
+
+title Sequence Diagram 3 — LLM Failure and Retry
+
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+
+actor       Client
+participant "TextAnalysisController" as Controller
+participant "TextAnalysisService"    as Service
+participant "ChatClient\n(Spring AI)" as ChatClient
+participant "OpenAI API"             as OpenAI
+participant "GlobalExceptionHandler" as Handler
+
+Client -> Controller : POST /api/analyze\n{ "text": "..." }
+
+Controller -> Controller : @Valid — passes
+
+Controller -> Service : analyze(request)
+
+Service -> Service : buildPrompt(text)
+
+== Attempt 1 ==
+
+Service -> ChatClient : call(prompt)
+ChatClient -> OpenAI : HTTPS request
+
+alt LLM unavailable (timeout / 5xx)
+
+  OpenAI --> ChatClient : error / timeout
+  ChatClient --> Service : exception
+
+else LLM returns malformed JSON
+
+  OpenAI --> ChatClient : 200 OK (bad JSON body)
+  ChatClient --> Service : ChatResponse
+  Service -> Service : parseResponse() — fails
+
+end
+
+note over Service : Attempt 1 failed.\nRetrying once.
+
+== Attempt 2 (retry) ==
+
+Service -> ChatClient : call(prompt)
+ChatClient -> OpenAI : HTTPS request
+
+alt LLM still unavailable
+
+  OpenAI --> ChatClient : error / timeout
+  ChatClient --> Service : exception
+  Service -> Handler : throws LlmUnavailableException
+  Handler -> Handler : handleLlmUnavailable(ex)\n→ ErrorResponse(\n    error: "LLM service unavailable",\n    code: LLM_UNAVAILABLE\n  )
+  Handler --> Client : 502 Bad Gateway\n{\n  "error": "LLM service unavailable",\n  "code": "LLM_UNAVAILABLE"\n}
+
+else LLM returns malformed JSON again
+
+  OpenAI --> ChatClient : 200 OK (bad JSON body)
+  ChatClient --> Service : ChatResponse
+  Service -> Service : parseResponse() — fails again
+  Service -> Handler : throws ParseException
+  Handler -> Handler : handleParseError(ex)\n→ ErrorResponse(\n    error: "Failed to parse LLM response",\n    code: PARSE_ERROR\n  )
+  Handler --> Client : 500 Internal Server Error\n{\n  "error": "Failed to parse LLM response",\n  "code": "PARSE_ERROR"\n}
+
+end
+
+@enduml

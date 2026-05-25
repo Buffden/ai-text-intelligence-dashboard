@@ -1,0 +1,25 @@
+@startuml sequence-validation-failure
+
+title Sequence Diagram 2 — Validation Failure
+
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+
+actor       Client
+participant "TextAnalysisController"  as Controller
+participant "GlobalExceptionHandler"  as Handler
+participant "TextAnalysisService"     as Service
+
+note over Service : Never reached\nin this flow
+
+Client -> Controller : POST /api/analyze\n{ "text": "" }
+
+Controller -> Controller : @Valid — validate request
+
+Controller -> Handler : throws MethodArgumentNotValidException
+
+Handler -> Handler : handleValidation(ex)\n→ ErrorResponse(\n    error: "text must not be blank",\n    code: INVALID_INPUT\n  )
+
+Handler --> Client : 400 Bad Request\n{\n  "error": "text must not be blank",\n  "code": "INVALID_INPUT"\n}
+
+@enduml
