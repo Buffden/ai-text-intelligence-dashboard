@@ -45,7 +45,7 @@ public class TextAnalysisService {
 
                 ChatResponse response = chatClient.prompt()
                         .system(systemPrompt)
-                        .user(request.getText())
+                        .user("<text>" + request.getText() + "</text>")
                         .call()
                         .chatResponse();
 

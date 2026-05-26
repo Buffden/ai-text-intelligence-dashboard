@@ -47,8 +47,9 @@ class TextAnalysisServiceTest {
     @BeforeEach
     void setUp() throws Exception {
         when(chatClientBuilder.build()).thenReturn(chatClient);
-        Resource prompt = new ByteArrayResource("You are a text analysis assistant.".getBytes(StandardCharsets.UTF_8));
-        service = new TextAnalysisService(chatClientBuilder, new ObjectMapper(), prompt);
+        Resource analyzePrompt = new ByteArrayResource("You are a text analysis assistant.".getBytes(StandardCharsets.UTF_8));
+        Resource classifyPrompt = new ByteArrayResource("You are a text classification assistant.".getBytes(StandardCharsets.UTF_8));
+        service = new TextAnalysisService(chatClientBuilder, new ObjectMapper(), classifyPrompt, analyzePrompt);
     }
 
     private AnalyzeRequest request(String text) {
