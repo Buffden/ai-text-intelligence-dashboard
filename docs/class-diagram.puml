@@ -7,17 +7,22 @@ skinparam linetype ortho
 package "controller" {
   class TextAnalysisController {
     - service: TextAnalysisService
-    + analyze(request: AnalyzeRequest): ResponseEntity<AnalysisResponse>
+    + analyze(request: AnalyzeRequest): AnalysisResponse
+    + classify(request: AnalyzeRequest): ClassifyResponse
   }
 }
 
 package "service" {
   class TextAnalysisService {
     - chatClient: ChatClient
+    - objectMapper: ObjectMapper
+    - systemPrompt: String
+    - classifyPrompt: String
     + analyze(request: AnalyzeRequest): AnalysisResponse
-    - buildPrompt(text: String): String
+    + classify(request: AnalyzeRequest): ClassifyResponse
     - parseResponse(raw: String): AnalysisResponse
-    - logUsage(usage: Usage, latencyMs: long): void
+    - classifyResponse(raw: String): ClassifyResponse
+    - logUsage(response: ChatResponse, latencyMs: long): void
   }
 }
 
@@ -26,12 +31,35 @@ package "dto" {
     - text: String
   }
 
+  ' Week 1
   class AnalysisResponse {
     - summary: String
-    - sentiment: String
+    - sentiment: Sentiment
     - confidence: double
     - keyTopics: List<String>
     - wordCountEstimate: int
+  }
+
+  enum Sentiment {
+    positive
+    negative
+    neutral
+  }
+
+  ' Week 2
+  class ClassifyResponse {
+    - reasoning: String
+    - category: Category
+    - confidence: double
+  }
+
+  enum Category {
+    technology
+    politics
+    sports
+    business
+    health
+    other
   }
 
   class ErrorResponse {
@@ -52,7 +80,7 @@ package "exception" {
   }
 
   class ParseException {
-    + ParseException(message: String, raw: String)
+    + ParseException(message: String, raw: String, cause: Throwable)
   }
 }
 
@@ -73,9 +101,14 @@ TextAnalysisService --> ChatClient : uses
 ' ── Data flow (usage, not ownership) ──────────────────────────
 TextAnalysisController ..> AnalyzeRequest : accepts
 TextAnalysisController ..> AnalysisResponse : returns
+TextAnalysisController ..> ClassifyResponse : returns
 
 TextAnalysisService ..> AnalyzeRequest : reads
 TextAnalysisService ..> AnalysisResponse : produces
+TextAnalysisService ..> ClassifyResponse : produces
+
+AnalysisResponse --> Sentiment : uses
+ClassifyResponse --> Category : uses
 
 ' ── Exceptions thrown by service ──────────────────────────────
 TextAnalysisService ..> LlmUnavailableException : «throws»

@@ -1,6 +1,6 @@
 @startuml sequence-validation-failure
 
-title Sequence Diagram 2 — Validation Failure
+title Sequence Diagram 2 — Validation Failure\n(applies to both /api/analyze and /api/classify)
 
 skinparam sequenceMessageAlign center
 skinparam responseMessageBelowArrow true
@@ -12,7 +12,7 @@ participant "TextAnalysisService"     as Service
 
 note over Service : Never reached\nin this flow
 
-Client -> Controller : POST /api/analyze\n{ "text": "" }
+Client -> Controller : POST /api/analyze (or /api/classify)\n{ "text": "" }
 
 Controller -> Controller : @Valid — validate request
 

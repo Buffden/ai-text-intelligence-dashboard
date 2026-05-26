@@ -2,6 +2,7 @@ package com.buffden.aitextintelligencedashboard.service;
 
 import com.buffden.aitextintelligencedashboard.dto.AnalysisResponse;
 import com.buffden.aitextintelligencedashboard.dto.AnalyzeRequest;
+import com.buffden.aitextintelligencedashboard.dto.ClassifyResponse;
 import com.buffden.aitextintelligencedashboard.exception.LlmUnavailableException;
 import com.buffden.aitextintelligencedashboard.exception.ParseException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -44,11 +45,20 @@ class TextAnalysisServiceTest {
             }
             """;
 
+    private static final String VALID_CLASSIFY_JSON = """
+            {
+              "reasoning": "The text discusses an AI model release targeting developers.",
+              "category": "technology",
+              "confidence": 0.95
+            }
+            """;
+
     @BeforeEach
     void setUp() throws Exception {
         when(chatClientBuilder.build()).thenReturn(chatClient);
-        Resource prompt = new ByteArrayResource("You are a text analysis assistant.".getBytes(StandardCharsets.UTF_8));
-        service = new TextAnalysisService(chatClientBuilder, new ObjectMapper(), prompt);
+        Resource analyzePrompt = new ByteArrayResource("You are a text analysis assistant.".getBytes(StandardCharsets.UTF_8));
+        Resource classifyPrompt = new ByteArrayResource("You are a text classification assistant.".getBytes(StandardCharsets.UTF_8));
+        service = new TextAnalysisService(chatClientBuilder, new ObjectMapper(), classifyPrompt, analyzePrompt);
     }
 
     private AnalyzeRequest request(String text) {
@@ -125,6 +135,66 @@ class TextAnalysisServiceTest {
                 .thenReturn(chatResponse);
 
         assertThatThrownBy(() -> service.analyze(request("some text")))
+                .isInstanceOf(ParseException.class)
+                .satisfies(e -> assertThat(((ParseException) e).getRawResponse())
+                        .isEqualTo("not valid json at all"));
+    }
+
+    @Test
+    void classify_validResponse_returnsMappedResult() {
+        ChatResponse chatResponse = stubChatResponse(VALID_CLASSIFY_JSON);
+        when(chatClient.prompt().system(anyString()).user(anyString()).call().chatResponse())
+                .thenReturn(chatResponse);
+
+        ClassifyResponse result = service.classify(request("OpenAI released a new model."));
+
+        assertThat(result.getReasoning()).isEqualTo("The text discusses an AI model release targeting developers.");
+        assertThat(result.getConfidence()).isEqualTo(0.95);
+    }
+
+    @Test
+    void classify_markdownWrappedJson_stripsAndParses() {
+        String wrapped = "```json\n" + VALID_CLASSIFY_JSON + "\n```";
+        ChatResponse chatResponse = stubChatResponse(wrapped);
+        when(chatClient.prompt().system(anyString()).user(anyString()).call().chatResponse())
+                .thenReturn(chatResponse);
+
+        ClassifyResponse result = service.classify(request("some text"));
+
+        assertThat(result.getReasoning()).isNotBlank();
+        assertThat(result.getConfidence()).isEqualTo(0.95);
+    }
+
+    @Test
+    void classify_firstAttemptFails_retriesAndSucceeds() {
+        ChatResponse chatResponse = stubChatResponse(VALID_CLASSIFY_JSON);
+        when(chatClient.prompt().system(anyString()).user(anyString()).call().chatResponse())
+                .thenThrow(new RuntimeException("timeout"))
+                .thenReturn(chatResponse);
+
+        ClassifyResponse result = service.classify(request("some text"));
+
+        assertThat(result.getReasoning()).isNotBlank();
+    }
+
+    @Test
+    void classify_bothAttemptsFail_throwsLlmUnavailableException() {
+        when(chatClient.prompt().system(anyString()).user(anyString()).call().chatResponse())
+                .thenThrow(new RuntimeException("connection refused"));
+
+        assertThatThrownBy(() -> service.classify(request("some text")))
+                .isInstanceOf(LlmUnavailableException.class)
+                .hasMessageContaining("unavailable");
+    }
+
+    @Test
+    void classify_malformedJsonOnBothAttempts_throwsParseException() {
+        ChatResponse chatResponse = mock(ChatResponse.class, Answers.RETURNS_DEEP_STUBS);
+        when(chatResponse.getResult().getOutput().getText()).thenReturn("not valid json at all");
+        when(chatClient.prompt().system(anyString()).user(anyString()).call().chatResponse())
+                .thenReturn(chatResponse);
+
+        assertThatThrownBy(() -> service.classify(request("some text")))
                 .isInstanceOf(ParseException.class)
                 .satisfies(e -> assertThat(((ParseException) e).getRawResponse())
                         .isEqualTo("not valid json at all"));

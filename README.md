@@ -30,17 +30,39 @@ The goal of this project isn't to build something flashy. It's to make sure ever
 
 ---
 
-## API Response Shape
+## API Endpoints
 
-Every text analysis request returns:
+### `POST /api/analyze`
+
+Returns a full structured analysis of the input text:
 
 ```json
 {
-  "summary": "A two-sentence summary of the text",
+  "summary": "A two-sentence summary of the text.",
   "sentiment": "positive | negative | neutral",
   "confidence": 0.87,
   "key_topics": ["topic1", "topic2"],
   "word_count_estimate": 142
+}
+```
+
+### `POST /api/classify`
+
+Returns a focused category classification with chain-of-thought reasoning:
+
+```json
+{
+  "reasoning": "The text discusses AI investment and automation, which maps to technology.",
+  "category": "technology | politics | sports | business | health | other",
+  "confidence": 0.91
+}
+```
+
+Both endpoints accept the same request body:
+
+```json
+{
+  "text": "Your input text here"
 }
 ```
 
@@ -49,8 +71,10 @@ Every text analysis request returns:
 ## What This Project Covers
 
 - Writing system prompts that enforce structured JSON output reliably
+- Few-shot prompting to improve classification consistency across categories
+- Using a reasoning scratchpad inside JSON output for chain-of-thought classification
+- Hardening prompts against injection using input delimiters and explicit role instructions
 - Validating and parsing LLM responses before trusting them
 - Handling API errors, rate limits, and malformed responses
 - Logging token usage per request from day one
 - Building a proper backend service layer — LLM is a component, not the whole app
-
