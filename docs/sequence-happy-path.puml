@@ -19,7 +19,9 @@ Controller -> Controller : @Valid — validate request\n(not blank, max 5000 cha
 
 Controller -> Service : analyze(request)
 
-Service -> ChatClient : call(analyze-system.st, text)
+Service -> Service : wrap input\n"<text>" + text + "</text>"
+
+Service -> ChatClient : call(analyze-system.st, <text>text</text>)
 
 ChatClient -> OpenAI : HTTPS request\n(model: gpt-4o, temperature: 0)
 

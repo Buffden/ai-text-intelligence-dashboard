@@ -83,7 +83,7 @@
 | F-18 | The classify prompt uses few-shot examples — at least 3 per category — embedded in the system prompt |
 | F-19 | The classify endpoint returns `other` for texts that do not clearly fit a category — no forced fit |
 
-#### Prompt Injection Hardening *(Extension 2 — in progress)*
+#### Prompt Injection Hardening
 
 | ID | Requirement |
 | -- | ----------- |

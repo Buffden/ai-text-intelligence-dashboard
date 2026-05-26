@@ -41,6 +41,7 @@ A straightforward three-layer system. The user interacts with an Angular fronten
 **Week 2 — Prompt Engineering**
 - Exposes `POST /api/classify` — focused category classification using few-shot prompting
 - Uses a separate system prompt (`classify-system.st`) with chain-of-thought reasoning
+- Hardens `/api/analyze` against prompt injection — user input is wrapped in `<text>` delimiters and the model is explicitly instructed to treat it as data, not instructions
 
 ### LLM Provider (OpenAI / Claude)
 
@@ -107,6 +108,10 @@ A single system prompt instructs the model to return a specific JSON shape. The 
 
 A separate system prompt for `/api/classify` embeds 10 labelled examples across all 6 categories. The `reasoning` field is placed before `category` in both the spec and examples so the model writes its thinking before committing to a label — a chain-of-thought pattern that improves classification consistency on ambiguous inputs.
 
+### Week 2 — Prompt injection hardening (`analyze-system.st`)
+
+User input on `/api/analyze` is wrapped in `<text>...</text>` delimiters before being passed to the model. The system prompt explicitly tells the model that content inside those tags is data to analyze, not instructions to follow. Output schema validation acts as the second line of defense — any injection that bypasses the prompt still has to produce valid JSON matching the `AnalysisResponse` contract.
+
 ---
 
 ## Key Design Decisions
@@ -121,5 +126,6 @@ A separate system prompt for `/api/classify` embeds 10 labelled examples across 
 | Classification prompting | 2 | Few-shot with 10 labelled examples | Zero-shot degrades on ambiguous inputs; examples show the model where category boundaries sit |
 | Reasoning field ordering | 2 | `reasoning` before `category` in output | Forces genuine chain-of-thought — model commits its thinking before the label, not after |
 | Prompt file per endpoint | 2 | Separate `classify-system.st` | Each prompt has one output contract; merging them makes both harder to reason about and test |
+| Injection hardening | 2 | `<text>` delimiters + explicit data instruction | Tells the model where user input starts and ends, and that it is data — not a command |
 
 Detailed reasoning for each decision lives in [`decisions.md`](./decisions.md).

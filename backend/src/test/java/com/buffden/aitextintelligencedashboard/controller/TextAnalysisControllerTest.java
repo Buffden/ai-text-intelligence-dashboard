@@ -2,6 +2,7 @@ package com.buffden.aitextintelligencedashboard.controller;
 
 import com.buffden.aitextintelligencedashboard.dto.AnalysisResponse;
 import com.buffden.aitextintelligencedashboard.dto.AnalyzeRequest;
+import com.buffden.aitextintelligencedashboard.dto.ClassifyResponse;
 import com.buffden.aitextintelligencedashboard.exception.LlmUnavailableException;
 import com.buffden.aitextintelligencedashboard.exception.ParseException;
 import com.buffden.aitextintelligencedashboard.service.TextAnalysisService;
@@ -105,6 +106,55 @@ class TextAnalysisControllerTest {
                 .thenThrow(new ParseException("parse fail", "{bad json}", new RuntimeException()));
 
         mockMvc.perform(post("/api/analyze")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\": \"some text\"}"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("PARSE_ERROR"));
+    }
+
+    @Test
+    void classify_validRequest_returns200WithBody() throws Exception {
+        ClassifyResponse classifyResponse = ClassifyResponse.builder()
+                .reasoning("The text discusses an AI model release targeting developers.")
+                .confidence(0.95)
+                .build();
+        when(textAnalysisService.classify(any())).thenReturn(classifyResponse);
+
+        mockMvc.perform(post("/api/classify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\": \"OpenAI released a new model.\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reasoning").value("The text discusses an AI model release targeting developers."))
+                .andExpect(jsonPath("$.confidence").value(0.95));
+    }
+
+    @Test
+    void classify_blankText_returns400() throws Exception {
+        mockMvc.perform(post("/api/classify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\": \"\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+    }
+
+    @Test
+    void classify_llmUnavailable_returns502() throws Exception {
+        when(textAnalysisService.classify(any()))
+                .thenThrow(new LlmUnavailableException("unavailable", new RuntimeException()));
+
+        mockMvc.perform(post("/api/classify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\": \"some text\"}"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.code").value("LLM_UNAVAILABLE"));
+    }
+
+    @Test
+    void classify_parseError_returns500() throws Exception {
+        when(textAnalysisService.classify(any()))
+                .thenThrow(new ParseException("parse fail", "{bad json}", new RuntimeException()));
+
+        mockMvc.perform(post("/api/classify")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"some text\"}"))
                 .andExpect(status().isInternalServerError())

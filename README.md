@@ -73,8 +73,8 @@ Both endpoints accept the same request body:
 - Writing system prompts that enforce structured JSON output reliably
 - Few-shot prompting to improve classification consistency across categories
 - Using a reasoning scratchpad inside JSON output for chain-of-thought classification
+- Hardening prompts against injection using input delimiters and explicit role instructions
 - Validating and parsing LLM responses before trusting them
 - Handling API errors, rate limits, and malformed responses
 - Logging token usage per request from day one
 - Building a proper backend service layer — LLM is a component, not the whole app
-
