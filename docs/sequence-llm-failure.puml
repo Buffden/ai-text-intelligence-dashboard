@@ -1,6 +1,6 @@
 @startuml sequence-llm-failure
 
-title Sequence Diagram 3 — LLM Failure and Retry
+title Sequence Diagram 3 — LLM Failure and Retry\n(applies to both /api/analyze and /api/classify)
 
 skinparam sequenceMessageAlign center
 skinparam responseMessageBelowArrow true
@@ -12,13 +12,13 @@ participant "ChatClient\n(Spring AI)" as ChatClient
 participant "OpenAI API"             as OpenAI
 participant "GlobalExceptionHandler" as Handler
 
-Client -> Controller : POST /api/analyze\n{ "text": "..." }
+Client -> Controller : POST /api/analyze (or /api/classify)\n{ "text": "..." }
 
 Controller -> Controller : @Valid — passes
 
-Controller -> Service : analyze(request)
+Controller -> Service : analyze(request) or classify(request)
 
-Service -> Service : buildPrompt(text)
+note over Service : Same retry logic applies\nto both endpoints
 
 == Attempt 1 ==
 

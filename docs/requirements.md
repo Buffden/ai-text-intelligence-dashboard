@@ -1,8 +1,12 @@
 # Requirements
 
-## Functional Requirements
+---
 
-### Core Analysis
+## Week 1 — Foundation
+
+### Functional Requirements
+
+#### Core Analysis
 
 | ID | Requirement |
 | -- | ----------- |
@@ -13,7 +17,7 @@
 | F-05 | The system extracts key entities from the text — people, places, organizations, and concepts |
 | F-06 | All analysis results are returned as a single structured JSON response |
 
-### API
+#### API
 
 | ID | Requirement |
 | -- | ----------- |
@@ -22,7 +26,7 @@
 | F-09 | The API validates the request before sending it to the LLM |
 | F-10 | The API validates and parses the LLM response before returning it to the client |
 
-### Frontend
+#### Frontend
 
 | ID | Requirement |
 | -- | ----------- |
@@ -31,19 +35,17 @@
 | F-13 | The frontend shows a loading state while the analysis is in progress |
 | F-14 | The frontend displays a clear error message if the request fails |
 
----
+### Non-Functional Requirements
 
-## Non-Functional Requirements
-
-### Reliability
+#### Reliability
 
 | ID | Requirement |
 | -- | ----------- |
 | NF-01 | The backend retries the LLM call once on failure before returning an error |
 | NF-02 | The backend handles LLM API rate limit errors gracefully with an appropriate error response |
-| NF-03 | The backend handles malformed or unparseable LLM responses without crashing |
+| NF-03 | The backend handles malformed or unreadable LLM responses without crashing |
 
-### Observability
+#### Observability
 
 | ID | Requirement |
 | -- | ----------- |
@@ -51,19 +53,50 @@
 | NF-05 | Every LLM request logs the latency from request sent to response received |
 | NF-06 | Errors from the LLM API are logged with enough context to debug without reproducing |
 
-### Security
+#### Security
 
 | ID | Requirement |
 | -- | ----------- |
 | NF-07 | The LLM API key is never hardcoded — loaded from environment variables only |
 | NF-08 | The API validates that input text is not empty and does not exceed a reasonable length limit |
 
-### Performance
+#### Performance
 
 | ID | Requirement |
 | -- | ----------- |
 | NF-09 | The backend responds within 10 seconds for typical inputs under 500 words |
 | NF-10 | The frontend does not block the UI thread while waiting for the analysis response |
+
+---
+
+## Week 2 — Prompt Engineering
+
+### Functional Requirements
+
+#### Category Classifier
+
+| ID | Requirement |
+| -- | ----------- |
+| F-15 | The backend exposes `POST /api/classify` that accepts the same text input as `/api/analyze` |
+| F-16 | The classify endpoint returns a category — technology, politics, sports, business, health, or other |
+| F-17 | The classify endpoint returns a confidence score and a one-sentence reasoning for the classification |
+| F-18 | The classify prompt uses few-shot examples — at least 3 per category — embedded in the system prompt |
+| F-19 | The classify endpoint returns `other` for texts that do not clearly fit a category — no forced fit |
+
+#### Prompt Injection Hardening *(Extension 2 — in progress)*
+
+| ID | Requirement |
+| -- | ----------- |
+| F-20 | User input on `/api/analyze` is wrapped in explicit delimiters in the system prompt |
+| F-21 | The system prompt explicitly instructs the model to treat delimited content as data, not instructions |
+| F-22 | Existing output validation catches any injection attempt that bypasses prompt-level defenses |
+
+### Non-Functional Requirements
+
+| ID | Requirement |
+| -- | ----------- |
+| NF-11 | The classify endpoint handles the same failure modes as `/api/analyze` — retry, parse error, LLM unavailable |
+| NF-12 | Few-shot examples are committed as part of the prompt file, not hardcoded in Java |
 
 ---
 

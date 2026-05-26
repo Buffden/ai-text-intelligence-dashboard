@@ -11,15 +11,15 @@ participant "TextAnalysisService"    as Service
 participant "ChatClient\n(Spring AI)" as ChatClient
 participant "OpenAI API"             as OpenAI
 
+== Week 1 — POST /api/analyze ==
+
 Client -> Controller : POST /api/analyze\n{ "text": "..." }
 
 Controller -> Controller : @Valid — validate request\n(not blank, max 5000 chars)
 
 Controller -> Service : analyze(request)
 
-Service -> Service : buildPrompt(text)
-
-Service -> ChatClient : call(prompt)
+Service -> ChatClient : call(analyze-system.st, text)
 
 ChatClient -> OpenAI : HTTPS request\n(model: gpt-4o, temperature: 0)
 
@@ -33,6 +33,30 @@ Service -> Service : logUsage(\n  inputTokens, outputTokens,\n  model, latencyMs
 
 Service --> Controller : AnalysisResponse
 
-Controller --> Client : 200 OK\n{\n  "summary": "...",\n  "sentiment": "positive",\n  "confidence": 0.91,\n  "keyTopics": [...],\n  "wordCountEstimate": 142\n}
+Controller --> Client : 200 OK\n{\n  "summary": "...",\n  "sentiment": "positive",\n  "confidence": 0.91,\n  "key_topics": [...],\n  "word_count_estimate": 142\n}
+
+== Week 2 — POST /api/classify ==
+
+Client -> Controller : POST /api/classify\n{ "text": "..." }
+
+Controller -> Controller : @Valid — validate request\n(not blank, max 5000 chars)
+
+Controller -> Service : classify(request)
+
+Service -> ChatClient : call(classify-system.st, text)
+
+ChatClient -> OpenAI : HTTPS request\n(model: gpt-4o, temperature: 0)
+
+OpenAI --> ChatClient : raw JSON response
+
+ChatClient --> Service : ChatResponse
+
+Service -> Service : classifyResponse(raw JSON)\n→ ClassifyResponse
+
+Service -> Service : logUsage(\n  inputTokens, outputTokens,\n  model, latencyMs\n)
+
+Service --> Controller : ClassifyResponse
+
+Controller --> Client : 200 OK\n{\n  "reasoning": "...",\n  "category": "technology",\n  "confidence": 0.91\n}
 
 @enduml
