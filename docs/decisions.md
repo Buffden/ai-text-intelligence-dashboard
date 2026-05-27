@@ -115,3 +115,41 @@ Without delimiters, the model has no structural boundary between its instruction
 Output schema validation remains the second line of defense. Even if an injection bypasses the prompt layer, the response still has to deserialize into a valid `AnalysisResponse` with the correct field types. A response that breaks the contract throws a `ParseException` and never reaches the client.
 
 **Tradeoff:** Two additional tokens per request (`<text>` and `</text>`) plus slightly longer system prompt. The cost is negligible.
+
+---
+
+## ADR-10: Per-request model override over multiple ChatClient beans *(Week 3)*
+
+**Decision:** The fallback model is applied using `OpenAiChatOptions.builder().model(fallbackModel).build()` on the existing `ChatClient` rather than creating a second `ChatClient` bean wired to a different model.
+
+**Why:**
+
+Two `ChatClient` beans would mean two injection points, two Spring configuration blocks, and a routing decision somewhere in the wiring layer. The per-request override keeps the routing decision in the service — where the business logic lives — and the config to a single `app.llm.fallback-model` property. One bean, one config value, one place to change when the fallback model needs to change.
+
+**Tradeoff:** The fallback is OpenAI-specific in this implementation — `OpenAiChatOptions` is a provider-specific class. If the project ever routes to a genuinely different provider (e.g. Claude) as a fallback, the options class would need to change. For now, using a cheaper OpenAI model as fallback makes this a non-issue.
+
+---
+
+## ADR-11: Fallback triggered only on LlmUnavailableException, not ParseException *(Week 3)*
+
+**Decision:** The fallback provider is only invoked when the primary model throws `LlmUnavailableException` after all retry attempts. `ParseException` propagates directly without triggering fallback.
+
+**Why:**
+
+A `ParseException` means the LLM responded but the response didn't match the expected JSON contract. That is a prompt failure, not a provider failure — the model is reachable, it just returned something unexpected. Routing that to a fallback model wouldn't fix the underlying problem; it would just hide it. If the primary model consistently returns bad JSON, the right fix is the prompt, not a different model.
+
+`LlmUnavailableException` means the provider couldn't be reached or returned a server error — a connectivity or availability problem that a different model can genuinely work around.
+
+**Tradeoff:** A ParseException from the primary doesn't get a second chance on the fallback. This is intentional — masking prompt bugs with provider-switching makes them harder to diagnose.
+
+---
+
+## ADR-12: attemptAnalyze / attemptClassify over a generic attempt method *(Week 3)*
+
+**Decision:** The retry loop is extracted into two separate private methods — `attemptAnalyze()` and `attemptClassify()` — rather than a single generic `attempt(request, parser, modelOverride)` method.
+
+**Why:**
+
+A generic method would require a `Function<String, T>` parser parameter and a generic return type, adding complexity for a case that has exactly two variants today. When evaluated against the project roadmap, no additional response types are introduced in this phase. The two-method approach is simpler to read, simpler to test, and straightforward to extend if a third response type genuinely appears.
+
+**Tradeoff:** Some duplication between `attemptAnalyze` and `attemptClassify`. The duplication is structural, not logical — both loops are identical in shape, they just call different parsers and use different prompt strings. That's an acceptable cost for the readability gain.

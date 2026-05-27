@@ -1,6 +1,6 @@
 @startuml sequence-llm-failure
 
-title Sequence Diagram 3 — LLM Failure and Retry\n(applies to both /api/analyze and /api/classify)
+title Sequence Diagram 3 — LLM Failure, Retry, and Fallback\n(applies to both /api/analyze and /api/classify)
 
 skinparam sequenceMessageAlign center
 skinparam responseMessageBelowArrow true
@@ -49,15 +49,38 @@ alt LLM still unavailable
 
   OpenAI --> ChatClient : error / timeout
   ChatClient --> Service : exception
-  Service -> Handler : throws LlmUnavailableException
-  Handler -> Handler : handleLlmUnavailable(ex)\n→ ErrorResponse(\n    error: "LLM service unavailable",\n    code: LLM_UNAVAILABLE\n  )
-  Handler --> Client : 502 Bad Gateway\n{\n  "error": "LLM service unavailable",\n  "code": "LLM_UNAVAILABLE"\n}
+  note over Service : Primary exhausted.\nRouting to fallback model.
+
+  == Fallback Attempt (Week 3) ==
+
+  Service -> ChatClient : call(prompt, model: gpt-4o-mini)
+  ChatClient -> OpenAI : HTTPS request\n(model: gpt-4o-mini)
+
+  alt Fallback succeeds
+
+    OpenAI --> ChatClient : raw JSON response
+    ChatClient --> Service : ChatResponse
+    Service -> Service : parseResponse() — succeeds
+    Service -> Service : logUsage(provider: fallback, ...)
+    Service --> Controller : result
+    Controller --> Client : 200 OK\n(fallback transparent to client)
+
+  else Fallback also fails
+
+    OpenAI --> ChatClient : error / timeout
+    ChatClient --> Service : exception
+    Service -> Handler : throws LlmUnavailableException
+    Handler -> Handler : handleLlmUnavailable(ex)\n→ ErrorResponse(\n    error: "LLM service unavailable",\n    code: LLM_UNAVAILABLE\n  )
+    Handler --> Client : 502 Bad Gateway\n{\n  "error": "LLM service unavailable",\n  "code": "LLM_UNAVAILABLE"\n}
+
+  end
 
 else LLM returns malformed JSON again
 
   OpenAI --> ChatClient : 200 OK (bad JSON body)
   ChatClient --> Service : ChatResponse
   Service -> Service : parseResponse() — fails again
+  note over Service : ParseException does NOT\ntrigger fallback — prompt\nfailure, not provider failure.
   Service -> Handler : throws ParseException
   Handler -> Handler : handleParseError(ex)\n→ ErrorResponse(\n    error: "Failed to parse LLM response",\n    code: PARSE_ERROR\n  )
   Handler --> Client : 500 Internal Server Error\n{\n  "error": "Failed to parse LLM response",\n  "code": "PARSE_ERROR"\n}

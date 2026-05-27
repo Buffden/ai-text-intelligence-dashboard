@@ -43,6 +43,13 @@ A straightforward three-layer system. The user interacts with an Angular fronten
 - Uses a separate system prompt (`classify-system.st`) with chain-of-thought reasoning
 - Hardens `/api/analyze` against prompt injection — user input is wrapped in `<text>` delimiters and the model is explicitly instructed to treat it as data, not instructions
 
+**Week 3 — LLM API Integration**
+- Adds multi-provider fallback: if the primary model exhausts all retries with `LlmUnavailableException`, the request is transparently routed to a configurable fallback model
+- Retry logic extracted into `attemptAnalyze()` and `attemptClassify()` — public methods handle the fallback decision only, private methods handle the retry loop only
+- Model override applied per-request via `OpenAiChatOptions` — no separate `ChatClient` bean required
+- Parse errors do not trigger the fallback — only connectivity and availability failures do
+- Provider (primary or fallback) and actual model name logged on every request
+
 ### LLM Provider (OpenAI / Claude)
 
 - Called exclusively by the backend
@@ -127,5 +134,8 @@ User input on `/api/analyze` is wrapped in `<text>...</text>` delimiters before 
 | Reasoning field ordering | 2 | `reasoning` before `category` in output | Forces genuine chain-of-thought — model commits its thinking before the label, not after |
 | Prompt file per endpoint | 2 | Separate `classify-system.st` | Each prompt has one output contract; merging them makes both harder to reason about and test |
 | Injection hardening | 2 | `<text>` delimiters + explicit data instruction | Tells the model where user input starts and ends, and that it is data — not a command |
+| Model override mechanism | 3 | Per-request `OpenAiChatOptions` | Avoids a second `ChatClient` bean; fallback model is a config value, not a wiring decision |
+| Fallback trigger condition | 3 | `LlmUnavailableException` only | Parse errors are prompt failures, not provider failures — routing them to fallback would mask prompt bugs |
+| Retry extraction | 3 | `attemptAnalyze` / `attemptClassify` private methods | Single responsibility — public method decides fallback, private method decides retry |
 
 Detailed reasoning for each decision lives in [`decisions.md`](./decisions.md).

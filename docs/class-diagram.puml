@@ -18,11 +18,15 @@ package "service" {
     - objectMapper: ObjectMapper
     - systemPrompt: String
     - classifyPrompt: String
+    ' Week 3
+    - fallbackModel: String
     + analyze(request: AnalyzeRequest): AnalysisResponse
     + classify(request: AnalyzeRequest): ClassifyResponse
+    - attemptAnalyze(request: AnalyzeRequest, modelOverride: String): AnalysisResponse
+    - attemptClassify(request: AnalyzeRequest, modelOverride: String): ClassifyResponse
     - parseResponse(raw: String): AnalysisResponse
     - classifyResponse(raw: String): ClassifyResponse
-    - logUsage(response: ChatResponse, latencyMs: long): void
+    - logUsage(response: ChatResponse, latencyMs: long, isFallback: boolean): void
   }
 }
 

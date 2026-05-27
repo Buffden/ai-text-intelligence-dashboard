@@ -16,6 +16,7 @@ The goal of this project isn't to build something flashy. It's to make sure ever
 | Entity extraction | Pulls out key people, places, organizations, and concepts |
 | Angular frontend | Clean UI for submitting text and viewing structured results |
 | Backend API layer | Spring Boot + Spring AI service that handles all LLM communication — never called directly from the frontend |
+| Multi-provider fallback | Automatically routes to a fallback model when the primary is unavailable — transparent to the client |
 
 ---
 
@@ -24,7 +25,7 @@ The goal of this project isn't to build something flashy. It's to make sure ever
 | Layer | Choice |
 | ----- | ------ |
 | Frontend | Angular |
-| Backend | Spring Boot + Spring AI 1.1.5 |
+| Backend | Spring Boot + Spring AI 1.1.6 |
 | AI API | OpenAI / Claude |
 | Language | Java (backend), TypeScript (frontend) |
 
@@ -78,3 +79,5 @@ Both endpoints accept the same request body:
 - Handling API errors, rate limits, and malformed responses
 - Logging token usage per request from day one
 - Building a proper backend service layer — LLM is a component, not the whole app
+- Multi-provider fallback — routing to a secondary model on primary failure without changing the API contract
+- Config-driven provider selection — switching models requires only a `application.yaml` change, no code changes
