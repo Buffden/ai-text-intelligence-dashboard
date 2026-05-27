@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
@@ -25,34 +26,50 @@ public class TextAnalysisService {
     private final ObjectMapper objectMapper;
     private final String systemPrompt;
     private final String classifyPrompt;
+    private final String fallbackModel;
 
     public TextAnalysisService(ChatClient.Builder chatClientBuilder,
                                 ObjectMapper objectMapper,
                                 @Value("classpath:prompts/classify-system.st") Resource classifyPromptResource,
-                                @Value("classpath:prompts/analyze-system.st") Resource promptResource) throws IOException {
+                                @Value("classpath:prompts/analyze-system.st") Resource promptResource,
+                                @Value("${app.llm.fallback-model}") String fallbackModel) throws IOException {
         this.chatClient = chatClientBuilder.build();
         this.objectMapper = objectMapper;
         this.classifyPrompt = classifyPromptResource.getContentAsString(StandardCharsets.UTF_8);
         this.systemPrompt = promptResource.getContentAsString(StandardCharsets.UTF_8);
+        this.fallbackModel = fallbackModel;
     }
 
     public AnalysisResponse analyze(AnalyzeRequest request) {
+        try {
+            return attemptAnalyze(request, null);
+        } catch (LlmUnavailableException e) {
+            log.warn("Primary model exhausted, routing to fallback: {}", fallbackModel);
+            return attemptAnalyze(request, fallbackModel);
+        }
+    }
+
+    private AnalysisResponse attemptAnalyze(AnalyzeRequest request, String modelOverride) {
         Exception lastException = null;
 
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             try {
                 long start = System.currentTimeMillis();
 
-                ChatResponse response = chatClient.prompt()
+                var spec = chatClient.prompt()
                         .system(systemPrompt)
-                        .user("<text>" + request.getText() + "</text>")
-                        .call()
-                        .chatResponse();
+                        .user("<text>" + request.getText() + "</text>");
 
+                if (modelOverride != null) {
+                    spec.options(OpenAiChatOptions.builder()
+                            .model(modelOverride)
+                            .build());
+                }
+
+                ChatResponse response = spec.call().chatResponse();
                 long latencyMs = System.currentTimeMillis() - start;
-                String raw = response.getResult().getOutput().getText();
-                AnalysisResponse result = parseResponse(raw);
-                logUsage(response, latencyMs);
+                AnalysisResponse result = parseResponse(response.getResult().getOutput().getText());
+                logUsage(response, latencyMs, modelOverride != null);
                 return result;
 
             } catch (Exception e) {
@@ -80,24 +97,36 @@ public class TextAnalysisService {
     }
 
     public ClassifyResponse classify(AnalyzeRequest request) {
+        try {
+            return attemptClassify(request, null);
+        } catch (LlmUnavailableException e) {
+            log.warn("Primary model exhausted, routing to fallback: {}", fallbackModel);
+            return attemptClassify(request, fallbackModel);
+        }
+    }
+
+    private ClassifyResponse attemptClassify(AnalyzeRequest request, String modelOverride) {
         Exception lastException = null;
 
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             try {
                 long start = System.currentTimeMillis();
 
-                ChatResponse response = chatClient.prompt()
-                            .system(classifyPrompt)
-                            .user(request.getText())
-                            .call()
-                            .chatResponse();
+                var spec = chatClient.prompt()
+                        .system(classifyPrompt)
+                        .user(request.getText());
+
+                if (modelOverride != null) {
+                    spec.options(OpenAiChatOptions.builder()
+                            .model(modelOverride)
+                            .build());
+                }
+
+                ChatResponse response = spec.call().chatResponse();
                 long latencyMs = System.currentTimeMillis() - start;
-                String raw = response.getResult().getOutput().getText();
-                ClassifyResponse result = classifyResponse(raw);
-                logUsage(response, latencyMs);
+                ClassifyResponse result = classifyResponse(response.getResult().getOutput().getText());
+                logUsage(response, latencyMs, modelOverride != null);
                 return result;
-
-
 
             } catch (Exception e) {
                 lastException = e;
@@ -122,9 +151,10 @@ public class TextAnalysisService {
         }
     }
 
-    private void logUsage(ChatResponse response, long latencyMs) {
+    private void logUsage(ChatResponse response, long latencyMs, boolean isFallback) {
         var usage = response.getMetadata().getUsage();
-        log.info("LLM usage — model: {}, input tokens: {}, output tokens: {}, total: {}, latency: {}ms",
+        log.info("LLM usage — provider: {}, model: {}, input tokens: {}, output tokens: {}, total: {}, latency: {}ms",
+                isFallback ? "fallback" : "primary",
                 response.getMetadata().getModel(),
                 usage.getPromptTokens(),
                 usage.getCompletionTokens(),

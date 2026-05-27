@@ -58,7 +58,7 @@ class TextAnalysisServiceTest {
         when(chatClientBuilder.build()).thenReturn(chatClient);
         Resource analyzePrompt = new ByteArrayResource("You are a text analysis assistant.".getBytes(StandardCharsets.UTF_8));
         Resource classifyPrompt = new ByteArrayResource("You are a text classification assistant.".getBytes(StandardCharsets.UTF_8));
-        service = new TextAnalysisService(chatClientBuilder, new ObjectMapper(), classifyPrompt, analyzePrompt);
+        service = new TextAnalysisService(chatClientBuilder, new ObjectMapper(), classifyPrompt, analyzePrompt, "gpt-4o-mini");
     }
 
     private AnalyzeRequest request(String text) {
