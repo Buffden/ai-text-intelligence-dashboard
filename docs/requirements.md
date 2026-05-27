@@ -100,6 +100,27 @@
 
 ---
 
+## Week 3 — LLM API Integration
+
+### Functional Requirements
+
+#### Multi-Provider Fallback
+
+| ID | Requirement |
+| -- | ----------- |
+| F-23 | The backend automatically routes requests to a fallback model when the primary model is unavailable or rate-limited |
+| F-24 | The active provider and fallback model are configurable via `application.yaml` — no code changes required to switch |
+| F-25 | Parse errors do not trigger the fallback — only connectivity and availability failures do |
+
+### Non-Functional Requirements
+
+| ID | Requirement |
+| -- | ----------- |
+| NF-13 | The fallback is transparent to the client — the API contract and response shape do not change |
+| NF-14 | Every request log includes which provider (primary or fallback) handled the request and the actual model name used |
+
+---
+
 ## Out of Scope
 
 - User authentication or accounts

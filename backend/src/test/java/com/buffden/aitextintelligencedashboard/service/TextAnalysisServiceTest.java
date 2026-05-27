@@ -201,6 +201,34 @@ class TextAnalysisServiceTest {
     }
 
     @Test
+    void analyze_primaryExhausted_fallbackSucceeds() {
+        ChatResponse chatResponse = stubChatResponse(VALID_JSON);
+        when(chatClient.prompt().system(anyString()).user(anyString()).call().chatResponse())
+                .thenThrow(new RuntimeException("connection refused"))
+                .thenThrow(new RuntimeException("connection refused"))
+                .thenReturn(chatResponse);
+
+        AnalysisResponse result = service.analyze(request("some text"));
+
+        assertThat(result.getSummary()).isNotBlank();
+        assertThat(result.getSentiment()).isEqualTo(AnalysisResponse.Sentiment.positive);
+    }
+
+    @Test
+    void classify_primaryExhausted_fallbackSucceeds() {
+        ChatResponse chatResponse = stubChatResponse(VALID_CLASSIFY_JSON);
+        when(chatClient.prompt().system(anyString()).user(anyString()).call().chatResponse())
+                .thenThrow(new RuntimeException("connection refused"))
+                .thenThrow(new RuntimeException("connection refused"))
+                .thenReturn(chatResponse);
+
+        ClassifyResponse result = service.classify(request("some text"));
+
+        assertThat(result.getReasoning()).isNotBlank();
+        assertThat(result.getConfidence()).isEqualTo(0.95);
+    }
+
+    @Test
     void analyze_allSentimentValues_deserializeCorrectly() {
         for (AnalysisResponse.Sentiment sentiment : AnalysisResponse.Sentiment.values()) {
             String json = """

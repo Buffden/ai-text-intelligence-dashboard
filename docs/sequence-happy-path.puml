@@ -61,4 +61,32 @@ Service --> Controller : ClassifyResponse
 
 Controller --> Client : 200 OK\n{\n  "reasoning": "...",\n  "category": "technology",\n  "confidence": 0.91\n}
 
+== Week 3 — Fallback (primary model unavailable) ==
+
+Client -> Controller : POST /api/analyze\n{ "text": "..." }
+
+Controller -> Service : analyze(request)
+
+Service -> Service : attemptAnalyze(request, null)\n→ primary model exhausted\n→ throws LlmUnavailableException
+
+note over Service : Primary failed.\nRouting to fallback model.
+
+Service -> Service : attemptAnalyze(request, "gpt-4o-mini")
+
+Service -> ChatClient : call(analyze-system.st,\n<text>text</text>,\nmodel: gpt-4o-mini)
+
+ChatClient -> OpenAI : HTTPS request\n(model: gpt-4o-mini, temperature: 0)
+
+OpenAI --> ChatClient : raw JSON response
+
+ChatClient --> Service : ChatResponse
+
+Service -> Service : parseResponse(raw JSON)\n→ AnalysisResponse
+
+Service -> Service : logUsage(\n  inputTokens, outputTokens,\n  model: gpt-4o-mini,\n  latencyMs, provider: fallback\n)
+
+Service --> Controller : AnalysisResponse
+
+Controller --> Client : 200 OK\n(same response shape — fallback is transparent)
+
 @enduml
