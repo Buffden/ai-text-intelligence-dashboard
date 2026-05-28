@@ -43,12 +43,20 @@ A straightforward three-layer system. The user interacts with an Angular fronten
 - Uses a separate system prompt (`classify-system.st`) with chain-of-thought reasoning
 - Hardens `/api/analyze` against prompt injection — user input is wrapped in `<text>` delimiters and the model is explicitly instructed to treat it as data, not instructions
 
-**Week 3 — LLM API Integration**
+**Week 3 — LLM API Integration (Extension 3)**
 - Adds multi-provider fallback: if the primary model exhausts all retries with `LlmUnavailableException`, the request is transparently routed to a configurable fallback model
 - Retry logic extracted into `attemptAnalyze()` and `attemptClassify()` — public methods handle the fallback decision only, private methods handle the retry loop only
 - Model override applied per-request via `OpenAiChatOptions` — no separate `ChatClient` bean required
 - Parse errors do not trigger the fallback — only connectivity and availability failures do
 - Provider (primary or fallback) and actual model name logged on every request
+
+**Week 3 — LLM API Integration (Extension 4)**
+- Replaces the fixed one-retry loop with exponential backoff: delay grows as `baseDelay * 2^(attempt-1)` with full jitter applied to desynchronise concurrent retries
+- Respects the `Retry-After` header on 429 responses — uses the server-specified delay instead of the calculated backoff
+- `ParseException` exits the retry loop immediately — parse failures are prompt problems, not transient errors, and retrying them wastes time
+- Connect and read timeouts externalized to `application.yaml` — no hardcoded values anywhere in the codebase
+- `LlmClientConfig` wires timeout values into Spring AI's `RestClient` so a hung LLM call cannot block a thread indefinitely
+- All retry config (`maxAttempts`, `baseDelayMs`) injected from config — changing retry behaviour requires only a `application.yaml` change
 
 ### LLM Provider (OpenAI / Claude)
 
@@ -137,5 +145,9 @@ User input on `/api/analyze` is wrapped in `<text>...</text>` delimiters before 
 | Model override mechanism | 3 | Per-request `OpenAiChatOptions` | Avoids a second `ChatClient` bean; fallback model is a config value, not a wiring decision |
 | Fallback trigger condition | 3 | `LlmUnavailableException` only | Parse errors are prompt failures, not provider failures — routing them to fallback would mask prompt bugs |
 | Retry extraction | 3 | `attemptAnalyze` / `attemptClassify` private methods | Single responsibility — public method decides fallback, private method decides retry |
+| Backoff strategy | 3 | Exponential backoff with full jitter | Linear backoff doesn't reduce load fast enough; fixed backoff causes thundering herd — jitter spreads retries across time |
+| `Retry-After` handling | 3 | Header takes priority over calculated backoff | Server knows better than the client how long it needs; ignoring it risks continued 429s |
+| `ParseException` in retry loop | 3 | Fast-fail — throw immediately, no retry | Bad output won't improve on retries; retrying wastes time and adds backoff delay on a guaranteed failure |
+| Timeout configuration | 3 | `LlmClientConfig` wires values from `application.yaml` | Timeouts belong on the HTTP client, not in application logic; externalizing them means no code change to tune them |
 
 Detailed reasoning for each decision lives in [`decisions.md`](./decisions.md).

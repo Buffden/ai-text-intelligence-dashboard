@@ -1,6 +1,6 @@
 @startuml sequence-llm-failure
 
-title Sequence Diagram 3 — LLM Failure, Retry, and Fallback\n(applies to both /api/analyze and /api/classify)
+title Sequence Diagram 3 — LLM Failure, Retry with Backoff, and Fallback\n(applies to both /api/analyze and /api/classify)
 
 skinparam sequenceMessageAlign center
 skinparam responseMessageBelowArrow true
@@ -18,72 +18,74 @@ Controller -> Controller : @Valid — passes
 
 Controller -> Service : analyze(request) or classify(request)
 
-note over Service : Same retry logic applies\nto both endpoints
+note over Service : Same retry + backoff logic\napplies to both endpoints.\nMax 3 attempts per model.
+
+== Scenario A — Parse Error (fast-fail, no retry) ==
+
+Service -> ChatClient : call(prompt)
+ChatClient -> OpenAI : HTTPS request
+
+OpenAI --> ChatClient : 200 OK (malformed JSON body)
+ChatClient --> Service : ChatResponse
+Service -> Service : parseResponse() — fails
+note over Service : ParseException caught\nas first case — thrown\nimmediately, no retry,\nno fallback triggered.
+Service -> Handler : throws ParseException
+Handler -> Handler : handleParseError(ex)\n→ ErrorResponse(\n    error: "Failed to parse LLM response",\n    code: PARSE_ERROR\n  )
+Handler --> Client : 500 Internal Server Error\n{\n  "error": "Failed to parse LLM response",\n  "code": "PARSE_ERROR"\n}
+
+== Scenario B — Connectivity Failure with Backoff and Fallback ==
+
+Service -> ChatClient : call(prompt)
+ChatClient -> OpenAI : HTTPS request\n[connect timeout: 5s, read timeout: 30s]
 
 == Attempt 1 ==
 
-Service -> ChatClient : call(prompt)
-ChatClient -> OpenAI : HTTPS request
+OpenAI --> ChatClient : error / timeout
+ChatClient --> Service : exception
 
-alt LLM unavailable (timeout / 5xx)
+note over Service : Attempt 1 failed.\nsleepBeforeRetry(attempt=1)\n→ backoff: random(0, 1s)
 
-  OpenAI --> ChatClient : error / timeout
-  ChatClient --> Service : exception
-
-else LLM returns malformed JSON
-
-  OpenAI --> ChatClient : 200 OK (bad JSON body)
-  ChatClient --> Service : ChatResponse
-  Service -> Service : parseResponse() — fails
-
-end
-
-note over Service : Attempt 1 failed.\nRetrying once.
-
-== Attempt 2 (retry) ==
+== Attempt 2 ==
 
 Service -> ChatClient : call(prompt)
 ChatClient -> OpenAI : HTTPS request
 
-alt LLM still unavailable
+OpenAI --> ChatClient : error / timeout
+ChatClient --> Service : exception
+
+note over Service : Attempt 2 failed.\nsleepBeforeRetry(attempt=2)\n→ backoff: random(0, 2s)\n  (or Retry-After header if 429)
+
+== Attempt 3 ==
+
+Service -> ChatClient : call(prompt)
+ChatClient -> OpenAI : HTTPS request
+
+OpenAI --> ChatClient : error / timeout
+ChatClient --> Service : exception
+
+note over Service : All 3 attempts exhausted.\nNo sleep — throwing\nLlmUnavailableException.\nRouting to fallback model.
+
+== Fallback — attemptAnalyze(request, "gpt-4o-mini") ==
+
+Service -> ChatClient : call(prompt, model: gpt-4o-mini)
+ChatClient -> OpenAI : HTTPS request\n(model: gpt-4o-mini)
+
+alt Fallback succeeds
+
+  OpenAI --> ChatClient : raw JSON response
+  ChatClient --> Service : ChatResponse
+  Service -> Service : parseResponse() — succeeds
+  Service -> Service : logUsage(provider: fallback, model: gpt-4o-mini, ...)
+  Service --> Controller : result
+  Controller --> Client : 200 OK\n(fallback transparent to client)
+
+else Fallback also exhausts all 3 attempts
 
   OpenAI --> ChatClient : error / timeout
   ChatClient --> Service : exception
-  note over Service : Primary exhausted.\nRouting to fallback model.
-
-  == Fallback Attempt (Week 3) ==
-
-  Service -> ChatClient : call(prompt, model: gpt-4o-mini)
-  ChatClient -> OpenAI : HTTPS request\n(model: gpt-4o-mini)
-
-  alt Fallback succeeds
-
-    OpenAI --> ChatClient : raw JSON response
-    ChatClient --> Service : ChatResponse
-    Service -> Service : parseResponse() — succeeds
-    Service -> Service : logUsage(provider: fallback, ...)
-    Service --> Controller : result
-    Controller --> Client : 200 OK\n(fallback transparent to client)
-
-  else Fallback also fails
-
-    OpenAI --> ChatClient : error / timeout
-    ChatClient --> Service : exception
-    Service -> Handler : throws LlmUnavailableException
-    Handler -> Handler : handleLlmUnavailable(ex)\n→ ErrorResponse(\n    error: "LLM service unavailable",\n    code: LLM_UNAVAILABLE\n  )
-    Handler --> Client : 502 Bad Gateway\n{\n  "error": "LLM service unavailable",\n  "code": "LLM_UNAVAILABLE"\n}
-
-  end
-
-else LLM returns malformed JSON again
-
-  OpenAI --> ChatClient : 200 OK (bad JSON body)
-  ChatClient --> Service : ChatResponse
-  Service -> Service : parseResponse() — fails again
-  note over Service : ParseException does NOT\ntrigger fallback — prompt\nfailure, not provider failure.
-  Service -> Handler : throws ParseException
-  Handler -> Handler : handleParseError(ex)\n→ ErrorResponse(\n    error: "Failed to parse LLM response",\n    code: PARSE_ERROR\n  )
-  Handler --> Client : 500 Internal Server Error\n{\n  "error": "Failed to parse LLM response",\n  "code": "PARSE_ERROR"\n}
+  Service -> Handler : throws LlmUnavailableException
+  Handler -> Handler : handleLlmUnavailable(ex)\n→ ErrorResponse(\n    error: "LLM service unavailable",\n    code: LLM_UNAVAILABLE\n  )
+  Handler --> Client : 502 Bad Gateway\n{\n  "error": "LLM service unavailable",\n  "code": "LLM_UNAVAILABLE"\n}
 
 end
 

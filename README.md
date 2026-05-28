@@ -81,3 +81,7 @@ Both endpoints accept the same request body:
 - Building a proper backend service layer — LLM is a component, not the whole app
 - Multi-provider fallback — routing to a secondary model on primary failure without changing the API contract
 - Config-driven provider selection — switching models requires only a `application.yaml` change, no code changes
+- Exponential backoff with full jitter — retry delays grow between attempts and are randomised to prevent thundering herd
+- `Retry-After` header support — on 429 responses the server-specified delay is used instead of the calculated backoff
+- Connect and read timeouts — externalized to config, wired into the HTTP client so hung LLM calls fail fast instead of blocking threads indefinitely
+- Parse errors fast-fail — malformed LLM responses throw immediately without consuming retry attempts or triggering fallback

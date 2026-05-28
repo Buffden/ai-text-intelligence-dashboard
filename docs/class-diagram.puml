@@ -12,20 +12,33 @@ package "controller" {
   }
 }
 
+package "config" {
+  ' Week 3 — Extension 4
+  class LlmClientConfig {
+    + restClientBuilder(connectMs: int, readMs: int): RestClient.Builder
+  }
+}
+
 package "service" {
   class TextAnalysisService {
     - chatClient: ChatClient
     - objectMapper: ObjectMapper
     - systemPrompt: String
     - classifyPrompt: String
-    ' Week 3
+    ' Week 3 — Extension 3
     - fallbackModel: String
+    ' Week 3 — Extension 4
+    - maxAttempts: int
+    - baseDelayMs: long
+    - random: Random
     + analyze(request: AnalyzeRequest): AnalysisResponse
     + classify(request: AnalyzeRequest): ClassifyResponse
     - attemptAnalyze(request: AnalyzeRequest, modelOverride: String): AnalysisResponse
     - attemptClassify(request: AnalyzeRequest, modelOverride: String): ClassifyResponse
     - parseResponse(raw: String): AnalysisResponse
     - classifyResponse(raw: String): ClassifyResponse
+    ' Week 3 — Extension 4
+    - sleepBeforeRetry(attempt: int, e: HttpClientErrorException): void
     - logUsage(response: ChatResponse, latencyMs: long, isFallback: boolean): void
   }
 }
