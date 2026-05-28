@@ -58,7 +58,7 @@ class TextAnalysisServiceTest {
         when(chatClientBuilder.build()).thenReturn(chatClient);
         Resource analyzePrompt = new ByteArrayResource("You are a text analysis assistant.".getBytes(StandardCharsets.UTF_8));
         Resource classifyPrompt = new ByteArrayResource("You are a text classification assistant.".getBytes(StandardCharsets.UTF_8));
-        service = new TextAnalysisService(chatClientBuilder, new ObjectMapper(), classifyPrompt, analyzePrompt, "gpt-4o-mini");
+        service = new TextAnalysisService(chatClientBuilder, new ObjectMapper(), classifyPrompt, analyzePrompt, "gpt-4o-mini", 3, 0L);
     }
 
     private AnalyzeRequest request(String text) {
@@ -206,6 +206,7 @@ class TextAnalysisServiceTest {
         when(chatClient.prompt().system(anyString()).user(anyString()).call().chatResponse())
                 .thenThrow(new RuntimeException("connection refused"))
                 .thenThrow(new RuntimeException("connection refused"))
+                .thenThrow(new RuntimeException("connection refused"))
                 .thenReturn(chatResponse);
 
         AnalysisResponse result = service.analyze(request("some text"));
@@ -218,6 +219,7 @@ class TextAnalysisServiceTest {
     void classify_primaryExhausted_fallbackSucceeds() {
         ChatResponse chatResponse = stubChatResponse(VALID_CLASSIFY_JSON);
         when(chatClient.prompt().system(anyString()).user(anyString()).call().chatResponse())
+                .thenThrow(new RuntimeException("connection refused"))
                 .thenThrow(new RuntimeException("connection refused"))
                 .thenThrow(new RuntimeException("connection refused"))
                 .thenReturn(chatResponse);
