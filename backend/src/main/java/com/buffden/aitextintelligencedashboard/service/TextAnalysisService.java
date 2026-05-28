@@ -1,5 +1,6 @@
 package com.buffden.aitextintelligencedashboard.service;
 
+import com.buffden.aitextintelligencedashboard.config.LlmProperties;
 import com.buffden.aitextintelligencedashboard.dto.AnalysisResponse;
 import com.buffden.aitextintelligencedashboard.dto.ClassifyResponse;
 import com.buffden.aitextintelligencedashboard.dto.AnalyzeRequest;
@@ -27,6 +28,7 @@ public class TextAnalysisService {
     private final ObjectMapper objectMapper;
     private final String systemPrompt;
     private final String classifyPrompt;
+    private final LlmProperties llmProperties;
     private final String fallbackModel;
     private final int maxAttempts;
     private final long baseDelayMs;
@@ -36,16 +38,15 @@ public class TextAnalysisService {
                                 ObjectMapper objectMapper,
                                 @Value("classpath:prompts/classify-system.st") Resource classifyPromptResource,
                                 @Value("classpath:prompts/analyze-system.st") Resource promptResource,
-                                @Value("${app.llm.fallback-model}") String fallbackModel,
-                                @Value("${app.llm.retry.max-attempts}") int maxAttempts,
-                                @Value("${app.llm.retry.base-delay-ms}") long baseDelayMs) throws IOException {
+                                LlmProperties llmProperties) throws IOException {
         this.chatClient = chatClientBuilder.build();
         this.objectMapper = objectMapper;
         this.classifyPrompt = classifyPromptResource.getContentAsString(StandardCharsets.UTF_8);
         this.systemPrompt = promptResource.getContentAsString(StandardCharsets.UTF_8);
-        this.fallbackModel = fallbackModel;
-        this.maxAttempts = maxAttempts;
-        this.baseDelayMs = baseDelayMs;
+        this.llmProperties = llmProperties;
+        this.fallbackModel = llmProperties.getModels().getFallback().get(0).getName();
+        this.maxAttempts = llmProperties.getRetry().getMaxAttempts();
+        this.baseDelayMs = llmProperties.getRetry().getBaseDelayMs();
     }
 
     public AnalysisResponse analyze(AnalyzeRequest request) {

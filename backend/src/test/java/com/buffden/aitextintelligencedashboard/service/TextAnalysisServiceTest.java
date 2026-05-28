@@ -1,5 +1,6 @@
 package com.buffden.aitextintelligencedashboard.service;
 
+import com.buffden.aitextintelligencedashboard.config.LlmProperties;
 import com.buffden.aitextintelligencedashboard.dto.AnalysisResponse;
 import com.buffden.aitextintelligencedashboard.dto.AnalyzeRequest;
 import com.buffden.aitextintelligencedashboard.dto.ClassifyResponse;
@@ -58,7 +59,37 @@ class TextAnalysisServiceTest {
         when(chatClientBuilder.build()).thenReturn(chatClient);
         Resource analyzePrompt = new ByteArrayResource("You are a text analysis assistant.".getBytes(StandardCharsets.UTF_8));
         Resource classifyPrompt = new ByteArrayResource("You are a text classification assistant.".getBytes(StandardCharsets.UTF_8));
-        service = new TextAnalysisService(chatClientBuilder, new ObjectMapper(), classifyPrompt, analyzePrompt, "gpt-4o-mini", 3, 0L);
+        service = new TextAnalysisService(chatClientBuilder, new ObjectMapper(), classifyPrompt, analyzePrompt, testLlmProperties());
+    }
+
+    private LlmProperties testLlmProperties() {
+        LlmProperties.ModelPricing primary = new LlmProperties.ModelPricing();
+        primary.setName("gpt-4o");
+        primary.setInputPricePerThousandTokens(0.0025);
+        primary.setOutputPricePerThousandTokens(0.010);
+
+        LlmProperties.ModelPricing fallback = new LlmProperties.ModelPricing();
+        fallback.setName("gpt-4o-mini");
+        fallback.setInputPricePerThousandTokens(0.00015);
+        fallback.setOutputPricePerThousandTokens(0.0006);
+
+        LlmProperties.ModelConfig models = new LlmProperties.ModelConfig();
+        models.setPrimary(primary);
+        models.setFallback(java.util.List.of(fallback));
+
+        LlmProperties.RetryConfig retry = new LlmProperties.RetryConfig();
+        retry.setMaxAttempts(3);
+        retry.setBaseDelayMs(0L);
+
+        LlmProperties.TimeoutConfig timeout = new LlmProperties.TimeoutConfig();
+        timeout.setConnectMs(5000);
+        timeout.setReadMs(30000);
+
+        LlmProperties props = new LlmProperties();
+        props.setModels(models);
+        props.setRetry(retry);
+        props.setTimeout(timeout);
+        return props;
     }
 
     private AnalyzeRequest request(String text) {
