@@ -85,3 +85,4 @@ Both endpoints accept the same request body:
 - `Retry-After` header support — on 429 responses the server-specified delay is used instead of the calculated backoff
 - Connect and read timeouts — externalized to config, wired into the HTTP client so hung LLM calls fail fast instead of blocking threads indefinitely
 - Parse errors fast-fail — malformed LLM responses throw immediately without consuming retry attempts or triggering fallback
+- Per-request cost estimation — input and output token prices configured per model, cost logged after every successful call with six decimal places

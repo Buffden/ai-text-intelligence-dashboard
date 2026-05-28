@@ -58,6 +58,12 @@ A straightforward three-layer system. The user interacts with an Angular fronten
 - `LlmClientConfig` wires timeout values into Spring AI's `RestClient` so a hung LLM call cannot block a thread indefinitely
 - All retry config (`maxAttempts`, `baseDelayMs`) injected from config — changing retry behaviour requires only a `application.yaml` change
 
+**Week 3 — LLM API Integration (Extension 5)**
+- Estimates cost per request using per-model input and output token prices from `application.yaml`
+- Pricing is defined alongside each model in config (primary and fallback) and resolved by name at log time via `findPricing()`
+- Model name passed from the call site rather than read from the API response — avoids mismatch between config names (`gpt-4o`) and versioned snapshot names returned by the API (`gpt-4o-2024-08-06`)
+- Cost logged as `LLM cost — model: gpt-4o, estimated: $0.001338` with six decimal places — rounding to two would show `$0.00` for most requests
+
 ### LLM Provider (OpenAI / Claude)
 
 - Called exclusively by the backend
@@ -149,5 +155,7 @@ User input on `/api/analyze` is wrapped in `<text>...</text>` delimiters before 
 | `Retry-After` handling | 3 | Header takes priority over calculated backoff | Server knows better than the client how long it needs; ignoring it risks continued 429s |
 | `ParseException` in retry loop | 3 | Fast-fail — throw immediately, no retry | Bad output won't improve on retries; retrying wastes time and adds backoff delay on a guaranteed failure |
 | Timeout configuration | 3 | `LlmClientConfig` wires values from `application.yaml` | Timeouts belong on the HTTP client, not in application logic; externalizing them means no code change to tune them |
+| Cost tracking model name | 3 | Passed from call site (config value) | API returns versioned snapshot names; config has short names — they don't match for pricing lookup. Call site always knows the intended model name |
+| Pricing config location | 3 | Nested under each model in `app.llm.models` | Price is a property of a model, not a global config — grouping them together makes it obvious which prices apply to which model |
 
 Detailed reasoning for each decision lives in [`decisions.md`](./decisions.md).

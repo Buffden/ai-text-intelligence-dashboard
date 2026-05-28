@@ -187,3 +187,35 @@ This is a different problem class from a connectivity failure. The fix for a `Pa
 ADR-11 records the same reasoning for the fallback — `ParseException` should not trigger fallback either. Both decisions come from the same principle: routing a prompt failure to more infrastructure doesn't fix the prompt.
 
 **Tradeoff:** A parse failure on the primary model gets no second chance on the fallback. If the primary model was having a transient output quality issue (rare but possible), the fallback might have succeeded. That case is edge enough that masking it with a retry would be worse than surfacing it directly.
+
+---
+
+## ADR-15: Model name sourced from call site, not API response *(Week 3 — Extension 5)*
+
+**Decision:** When logging cost after a successful LLM call, the model name is passed as a parameter from the call site (where it is known from config) rather than read from `response.getMetadata().getModel()`.
+
+**Why:**
+
+OpenAI returns a versioned snapshot name in the API response — `gpt-4o-2024-08-06` — while `application.yaml` stores the short alias `gpt-4o`. These strings don't match, so a pricing lookup keyed on the response model name always fails, and the cost log line falls through to the "pricing not configured" warning even though the config is correct.
+
+Three alternatives were considered:
+
+1. Store versioned snapshot names in config (`gpt-4o-2024-08-06`). Rejected — versioned names change silently with model updates. The config would drift out of date without any visible error.
+2. Use `contains()` matching (`"gpt-4o-2024-08-06".contains("gpt-4o")`). Rejected — `gpt-4o-mini` also contains `gpt-4o`, making this approach ambiguous for any model in the same family.
+3. Pass the model name from the call site. The model name is already known at the call site: it's either `llmProperties.getModels().getPrimary().getName()` or the `modelOverride` string, both of which come from config. The pricing lookup is then an exact match, always correct, with no dependency on the response format.
+
+**Tradeoff:** The model name in the cost log reflects what was configured and intended, not what the API says it actually ran. In practice these are the same model — OpenAI's versioned snapshots map to the short alias. If OpenAI ever changed the underlying model behind an alias silently (running `gpt-4o` on a different architecture), the logged name wouldn't reflect it. That's acceptable — billing is still by the alias, and we're estimating cost against the alias price.
+
+---
+
+## ADR-16: Pricing config nested under each model definition *(Week 3 — Extension 5)*
+
+**Decision:** Input and output prices are defined as properties of each model entry in `application.yaml`, not as a separate top-level config block.
+
+**Why:**
+
+A model's price is a property of that model, not a global configuration value. Placing `input-price-per-thousand-tokens` and `output-price-per-thousand-tokens` directly under each model in the `models.primary` and `models.fallback` list means the model name and its pricing live in the same place. Adding a new fallback model requires adding one block with name and prices together — there's no second location to update.
+
+A flat map of `modelName → pricing` would work functionally but separates data that belongs together. If a model entry is removed from the fallback list, its pricing config gets removed with it automatically.
+
+**Tradeoff:** The `LlmProperties` class needs `ModelPricing` to hold three fields (name + two prices) rather than just a name. That's a minor increase in the config class complexity in exchange for a cleaner config structure.

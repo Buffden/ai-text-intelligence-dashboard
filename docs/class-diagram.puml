@@ -15,7 +15,14 @@ package "controller" {
 package "config" {
   ' Week 3 — Extension 4
   class LlmClientConfig {
-    + restClientBuilder(connectMs: int, readMs: int): RestClient.Builder
+    + restClientBuilder(llmProperties: LlmProperties): RestClient.Builder
+  }
+
+  ' Week 3 — Extension 5
+  class LlmProperties {
+    - models: ModelConfig
+    - retry: RetryConfig
+    - timeout: TimeoutConfig
   }
 }
 
@@ -39,7 +46,9 @@ package "service" {
     - classifyResponse(raw: String): ClassifyResponse
     ' Week 3 — Extension 4
     - sleepBeforeRetry(attempt: int, e: HttpClientErrorException): void
-    - logUsage(response: ChatResponse, latencyMs: long, isFallback: boolean): void
+    ' Week 3 — Extension 5
+    - logUsage(response: ChatResponse, latencyMs: long, isFallback: boolean, modelName: String): void
+    - findPricing(modelName: String): Optional<LlmProperties.ModelPricing>
   }
 }
 
@@ -114,6 +123,8 @@ package "exception.handler" {
 TextAnalysisController --> TextAnalysisService : uses
 
 TextAnalysisService --> ChatClient : uses
+TextAnalysisService --> LlmProperties : reads
+LlmClientConfig --> LlmProperties : reads
 
 ' ── Data flow (usage, not ownership) ──────────────────────────
 TextAnalysisController ..> AnalyzeRequest : accepts

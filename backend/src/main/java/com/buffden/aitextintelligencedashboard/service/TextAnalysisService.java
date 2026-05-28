@@ -1,5 +1,6 @@
 package com.buffden.aitextintelligencedashboard.service;
 
+import com.buffden.aitextintelligencedashboard.config.LlmProperties;
 import com.buffden.aitextintelligencedashboard.dto.AnalysisResponse;
 import com.buffden.aitextintelligencedashboard.dto.ClassifyResponse;
 import com.buffden.aitextintelligencedashboard.dto.AnalyzeRequest;
@@ -17,7 +18,9 @@ import org.springframework.web.client.HttpClientErrorException;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 import java.util.Random;
+import java.util.stream.Stream;
 
 @Slf4j
 @Service
@@ -27,6 +30,7 @@ public class TextAnalysisService {
     private final ObjectMapper objectMapper;
     private final String systemPrompt;
     private final String classifyPrompt;
+    private final LlmProperties llmProperties;
     private final String fallbackModel;
     private final int maxAttempts;
     private final long baseDelayMs;
@@ -36,16 +40,15 @@ public class TextAnalysisService {
                                 ObjectMapper objectMapper,
                                 @Value("classpath:prompts/classify-system.st") Resource classifyPromptResource,
                                 @Value("classpath:prompts/analyze-system.st") Resource promptResource,
-                                @Value("${app.llm.fallback-model}") String fallbackModel,
-                                @Value("${app.llm.retry.max-attempts}") int maxAttempts,
-                                @Value("${app.llm.retry.base-delay-ms}") long baseDelayMs) throws IOException {
+                                LlmProperties llmProperties) throws IOException {
         this.chatClient = chatClientBuilder.build();
         this.objectMapper = objectMapper;
         this.classifyPrompt = classifyPromptResource.getContentAsString(StandardCharsets.UTF_8);
         this.systemPrompt = promptResource.getContentAsString(StandardCharsets.UTF_8);
-        this.fallbackModel = fallbackModel;
-        this.maxAttempts = maxAttempts;
-        this.baseDelayMs = baseDelayMs;
+        this.llmProperties = llmProperties;
+        this.fallbackModel = llmProperties.getModels().getFallback().get(0).getName();
+        this.maxAttempts = llmProperties.getRetry().getMaxAttempts();
+        this.baseDelayMs = llmProperties.getRetry().getBaseDelayMs();
     }
 
     public AnalysisResponse analyze(AnalyzeRequest request) {
@@ -77,7 +80,8 @@ public class TextAnalysisService {
                 ChatResponse response = spec.call().chatResponse();
                 long latencyMs = System.currentTimeMillis() - start;
                 AnalysisResponse result = parseResponse(response.getResult().getOutput().getText());
-                logUsage(response, latencyMs, modelOverride != null);
+                String modelUsed = modelOverride != null ? modelOverride : llmProperties.getModels().getPrimary().getName();
+                logUsage(response, latencyMs, modelOverride != null, modelUsed);
                 return result;
 
             } catch (ParseException e) {
@@ -141,7 +145,8 @@ public class TextAnalysisService {
                 ChatResponse response = spec.call().chatResponse();
                 long latencyMs = System.currentTimeMillis() - start;
                 ClassifyResponse result = classifyResponse(response.getResult().getOutput().getText());
-                logUsage(response, latencyMs, modelOverride != null);
+                String modelUsed = modelOverride != null ? modelOverride : llmProperties.getModels().getPrimary().getName();
+                logUsage(response, latencyMs, modelOverride != null, modelUsed);
                 return result;
 
             } catch (ParseException e) {
@@ -203,14 +208,32 @@ public class TextAnalysisService {
         }
     }
 
-    private void logUsage(ChatResponse response, long latencyMs, boolean isFallback) {
+    private void logUsage(ChatResponse response, long latencyMs, boolean isFallback, String modelName) {
         var usage = response.getMetadata().getUsage();
+
         log.info("LLM usage — provider: {}, model: {}, input tokens: {}, output tokens: {}, total: {}, latency: {}ms",
                 isFallback ? "fallback" : "primary",
-                response.getMetadata().getModel(),
+                modelName,
                 usage.getPromptTokens(),
                 usage.getCompletionTokens(),
                 usage.getTotalTokens(),
                 latencyMs);
+
+        findPricing(modelName).ifPresentOrElse(
+                pricing -> {
+                    double cost = (usage.getPromptTokens() / 1000.0 * pricing.getInputPricePerThousandTokens())
+                            + (usage.getCompletionTokens() / 1000.0 * pricing.getOutputPricePerThousandTokens());
+                    log.info("LLM cost — model: {}, estimated: ${}", modelName, String.format("%.6f", cost));
+                },
+                () -> log.warn("LLM cost — pricing not configured for model: {}", modelName)
+        );
+    }
+
+    private Optional<LlmProperties.ModelPricing> findPricing(String modelName) {
+        var models = llmProperties.getModels();
+        return Stream.concat(
+                Stream.of(models.getPrimary()),
+                models.getFallback().stream()
+        ).filter(p -> p.getName().equals(modelName)).findFirst();
     }
 }

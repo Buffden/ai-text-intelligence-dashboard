@@ -11,7 +11,15 @@ spring:
 
 app:
   llm:
-    fallback-model: gpt-4o-mini
+    models:
+      primary:
+        name: gpt-4o
+        input-price-per-thousand-tokens: 0.0025
+        output-price-per-thousand-tokens: 0.010
+      fallback:
+        - name: gpt-4o-mini
+          input-price-per-thousand-tokens: 0.00015
+          output-price-per-thousand-tokens: 0.0006
     retry:
       max-attempts: 3
       base-delay-ms: 1000
