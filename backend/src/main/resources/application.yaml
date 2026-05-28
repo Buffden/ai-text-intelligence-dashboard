@@ -12,6 +12,12 @@ spring:
 app:
   llm:
     fallback-model: gpt-4o-mini
+    retry:
+      max-attempts: 3
+      base-delay-ms: 1000
+    timeout:
+      connect-ms: 5000
+      read-ms: 30000
 
 server:
   port: 8080

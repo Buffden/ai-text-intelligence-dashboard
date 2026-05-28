@@ -44,7 +44,7 @@ The backend still validates and parses the response before using it — this is 
 
 ---
 
-## ADR-04: Single retry on LLM failure *(Week 1)*
+## ADR-04: Single retry on LLM failure *(Week 1 — superseded in Week 3 by ADR-13)*
 
 **Decision:** If the LLM call fails or returns an unparseable response, retry exactly once before returning an error to the client.
 
@@ -53,6 +53,8 @@ The backend still validates and parses the response before using it — this is 
 LLM APIs occasionally return transient errors or malformed responses that succeed on a second attempt. A single retry catches most of these without adding meaningful latency in the success case. More than one retry risks hammering the API during an actual outage and adds user-facing latency.
 
 **Tradeoff:** One retry means some failures that would have succeeded on a third attempt get surfaced to the user. That's an acceptable tradeoff.
+
+**Superseded by ADR-13.** The fixed single-retry with no delay was replaced with configurable exponential backoff in Week 3 (Extension 4). The reasoning above still holds for why retrying at all is worth it — ADR-13 addresses how to retry correctly.
 
 ---
 
@@ -144,7 +146,7 @@ A `ParseException` means the LLM responded but the response didn't match the exp
 
 ---
 
-## ADR-12: attemptAnalyze / attemptClassify over a generic attempt method *(Week 3)*
+## ADR-12: attemptAnalyze / attemptClassify over a generic attempt method *(Week 3 — Extension 3)*
 
 **Decision:** The retry loop is extracted into two separate private methods — `attemptAnalyze()` and `attemptClassify()` — rather than a single generic `attempt(request, parser, modelOverride)` method.
 
@@ -153,3 +155,35 @@ A `ParseException` means the LLM responded but the response didn't match the exp
 A generic method would require a `Function<String, T>` parser parameter and a generic return type, adding complexity for a case that has exactly two variants today. When evaluated against the project roadmap, no additional response types are introduced in this phase. The two-method approach is simpler to read, simpler to test, and straightforward to extend if a third response type genuinely appears.
 
 **Tradeoff:** Some duplication between `attemptAnalyze` and `attemptClassify`. The duplication is structural, not logical — both loops are identical in shape, they just call different parsers and use different prompt strings. That's an acceptable cost for the readability gain.
+
+---
+
+## ADR-13: Exponential backoff with full jitter over fixed delay *(Week 3 — Extension 4)*
+
+**Decision:** Replace the fixed single-retry loop with exponential backoff using full jitter: `delay = random(0, baseDelay * 2^(attempt-1))`. Cap at 3 total attempts. Respect the `Retry-After` header on 429 responses when present.
+
+**Why:**
+
+Retrying immediately after a failure often hits the same error again — the server is still overloaded, the rate limit window hasn't reset, or the connection issue persists. A growing delay between retries gives the provider time to recover.
+
+Pure exponential backoff without jitter creates a thundering herd problem when many clients are rate-limited simultaneously — they all back off by the same amount and retry in lockstep, causing another spike at the same moment. Full jitter randomises each client's delay across the range `[0, backoff]`, spreading retries across the window and smoothing the load.
+
+The `Retry-After` header, when present on a 429 response, tells the client exactly how long the server needs. Using that value is always more accurate than the client's own estimate — ignoring it risks continued rejections even after waiting.
+
+**Tradeoff:** Full jitter means some retries happen sooner than the theoretical backoff ceiling and some later. In the worst case a retry fires almost immediately (delay near 0). This is generally acceptable — the distribution still spreads load across the window, and an early retry that fails simply waits again on the next iteration.
+
+---
+
+## ADR-14: ParseException fast-fails out of the retry loop *(Week 3 — Extension 4)*
+
+**Decision:** `ParseException` is caught as the first case in the retry loop and re-thrown immediately. It does not consume a retry attempt, trigger backoff, or route to the fallback.
+
+**Why:**
+
+A `ParseException` means the LLM responded successfully but returned output that didn't match the expected JSON contract. The provider was reachable — the failure is in the prompt or model behaviour, not the connection. Retrying the same prompt against the same model will produce the same bad output, so consuming retry attempts on it wastes time and adds backoff delay on a guaranteed failure.
+
+This is a different problem class from a connectivity failure. The fix for a `ParseException` is prompt iteration, not retry logic.
+
+ADR-11 records the same reasoning for the fallback — `ParseException` should not trigger fallback either. Both decisions come from the same principle: routing a prompt failure to more infrastructure doesn't fix the prompt.
+
+**Tradeoff:** A parse failure on the primary model gets no second chance on the fallback. If the primary model was having a transient output quality issue (rare but possible), the fallback might have succeeded. That case is edge enough that masking it with a retry would be worse than surfacing it directly.
