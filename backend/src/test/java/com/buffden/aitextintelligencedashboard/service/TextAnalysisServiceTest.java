@@ -101,7 +101,6 @@ class TextAnalysisServiceTest {
     private ChatResponse stubChatResponse(String rawText) {
         ChatResponse response = mock(ChatResponse.class, Answers.RETURNS_DEEP_STUBS);
         when(response.getResult().getOutput().getText()).thenReturn(rawText);
-        when(response.getMetadata().getModel()).thenReturn("gpt-4o");
         when(response.getMetadata().getUsage().getPromptTokens()).thenReturn(20);
         when(response.getMetadata().getUsage().getCompletionTokens()).thenReturn(80);
         when(response.getMetadata().getUsage().getTotalTokens()).thenReturn(100);

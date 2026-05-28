@@ -18,7 +18,9 @@ import org.springframework.web.client.HttpClientErrorException;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 import java.util.Random;
+import java.util.stream.Stream;
 
 @Slf4j
 @Service
@@ -78,7 +80,8 @@ public class TextAnalysisService {
                 ChatResponse response = spec.call().chatResponse();
                 long latencyMs = System.currentTimeMillis() - start;
                 AnalysisResponse result = parseResponse(response.getResult().getOutput().getText());
-                logUsage(response, latencyMs, modelOverride != null);
+                String modelUsed = modelOverride != null ? modelOverride : llmProperties.getModels().getPrimary().getName();
+                logUsage(response, latencyMs, modelOverride != null, modelUsed);
                 return result;
 
             } catch (ParseException e) {
@@ -142,7 +145,8 @@ public class TextAnalysisService {
                 ChatResponse response = spec.call().chatResponse();
                 long latencyMs = System.currentTimeMillis() - start;
                 ClassifyResponse result = classifyResponse(response.getResult().getOutput().getText());
-                logUsage(response, latencyMs, modelOverride != null);
+                String modelUsed = modelOverride != null ? modelOverride : llmProperties.getModels().getPrimary().getName();
+                logUsage(response, latencyMs, modelOverride != null, modelUsed);
                 return result;
 
             } catch (ParseException e) {
@@ -204,14 +208,32 @@ public class TextAnalysisService {
         }
     }
 
-    private void logUsage(ChatResponse response, long latencyMs, boolean isFallback) {
+    private void logUsage(ChatResponse response, long latencyMs, boolean isFallback, String modelName) {
         var usage = response.getMetadata().getUsage();
+
         log.info("LLM usage — provider: {}, model: {}, input tokens: {}, output tokens: {}, total: {}, latency: {}ms",
                 isFallback ? "fallback" : "primary",
-                response.getMetadata().getModel(),
+                modelName,
                 usage.getPromptTokens(),
                 usage.getCompletionTokens(),
                 usage.getTotalTokens(),
                 latencyMs);
+
+        findPricing(modelName).ifPresentOrElse(
+                pricing -> {
+                    double cost = (usage.getPromptTokens() / 1000.0 * pricing.getInputPricePerThousandTokens())
+                            + (usage.getCompletionTokens() / 1000.0 * pricing.getOutputPricePerThousandTokens());
+                    log.info("LLM cost — model: {}, estimated: ${}", modelName, String.format("%.6f", cost));
+                },
+                () -> log.warn("LLM cost — pricing not configured for model: {}", modelName)
+        );
+    }
+
+    private Optional<LlmProperties.ModelPricing> findPricing(String modelName) {
+        var models = llmProperties.getModels();
+        return Stream.concat(
+                Stream.of(models.getPrimary()),
+                models.getFallback().stream()
+        ).filter(p -> p.getName().equals(modelName)).findFirst();
     }
 }
