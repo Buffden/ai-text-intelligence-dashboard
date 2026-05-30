@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
+import reactor.core.publisher.Flux;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -30,6 +31,7 @@ public class TextAnalysisService {
     private final ObjectMapper objectMapper;
     private final String systemPrompt;
     private final String classifyPrompt;
+    private final String streamPrompt;
     private final LlmProperties llmProperties;
     private final String fallbackModel;
     private final int maxAttempts;
@@ -40,11 +42,13 @@ public class TextAnalysisService {
                                 ObjectMapper objectMapper,
                                 @Value("classpath:prompts/classify-system.st") Resource classifyPromptResource,
                                 @Value("classpath:prompts/analyze-system.st") Resource promptResource,
+                                @Value("classpath:prompts/analyze-stream-system.st") Resource promptStreamResource,
                                 LlmProperties llmProperties) throws IOException {
         this.chatClient = chatClientBuilder.build();
         this.objectMapper = objectMapper;
         this.classifyPrompt = classifyPromptResource.getContentAsString(StandardCharsets.UTF_8);
         this.systemPrompt = promptResource.getContentAsString(StandardCharsets.UTF_8);
+        this.streamPrompt = promptStreamResource.getContentAsString(StandardCharsets.UTF_8);
         this.llmProperties = llmProperties;
         this.fallbackModel = llmProperties.getModels().getFallback().get(0).getName();
         this.maxAttempts = llmProperties.getRetry().getMaxAttempts();
@@ -235,5 +239,13 @@ public class TextAnalysisService {
                 Stream.of(models.getPrimary()),
                 models.getFallback().stream()
         ).filter(p -> p.getName().equals(modelName)).findFirst();
+    }
+
+    public Flux<String> analyzeStream(String text) {
+        return chatClient.prompt()
+                .system(streamPrompt)
+                .user("<text>" + text + "</text>")
+                .stream()
+                .content();
     }
 }
