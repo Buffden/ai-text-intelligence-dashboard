@@ -26,6 +26,10 @@ app:
     timeout:
       connect-ms: 5000
       read-ms: 30000
+  conversation:
+    max-messages: 20
+    expiry-seconds: 3600
+    cleanup-rate-ms: 600000
 
 server:
   port: 8080
