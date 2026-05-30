@@ -219,3 +219,35 @@ A model's price is a property of that model, not a global configuration value. P
 A flat map of `modelName → pricing` would work functionally but separates data that belongs together. If a model entry is removed from the fallback list, its pricing config gets removed with it automatically.
 
 **Tradeoff:** The `LlmProperties` class needs `ModelPricing` to hold three fields (name + two prices) rather than just a name. That's a minor increase in the config class complexity in exchange for a cleaner config structure.
+
+---
+
+## ADR-17: SseEmitter over Spring WebFlux for streaming endpoint *(Week 4 — Extension 6)*
+
+**Decision:** Implement the streaming analysis endpoint using Spring MVC's `SseEmitter`, subscribing to the `Flux<String>` returned by Spring AI on a background thread, rather than migrating the application to Spring WebFlux.
+
+**Why:**
+
+Spring Boot does not support running Spring MVC and Spring WebFlux in the same application. Introducing WebFlux would require migrating all existing endpoints — `analyze`, `classify`, their service methods, the `RestClient` config, and tests — from the blocking servlet model to the reactive model. That migration is a separate concern unrelated to the Week 4 learning goal, which is understanding streaming and conversation state.
+
+`SseEmitter` is Spring MVC's built-in mechanism for server-sent events. Subscribing to the `Flux<String>` from the Reactor scheduler and forwarding tokens via `SseEmitter.send()` bridges the two models cleanly without touching any existing code. This pattern is used in production codebases that have mature MVC backends and cannot justify a full reactive migration.
+
+**Tradeoff:** `SseEmitter` loses backpressure — if the client is slow, the server continues consuming tokens from the model and buffering them. This is acceptable for an LLM streaming use case where token generation rate is the bottleneck, not client consumption. A full WebFlux stack would handle backpressure natively and is the correct long-term choice for a streaming-first application.
+
+**Revisit in Phase 4** if the app evolves toward higher concurrency or more streaming endpoints — at that point a WebFlux migration becomes worth the cost.
+
+---
+
+## ADR-18: Separate system prompt for streaming analysis endpoint *(Week 4 — Extension 6)*
+
+**Decision:** The `/api/analyze/stream` endpoint uses a dedicated system prompt (`analyze-stream-system.st`) that instructs the model to respond in plain narrative prose, rather than reusing `analyze-system.st`.
+
+**Why:**
+
+The existing `analyze-system.st` prompt instructs the model to return a strict JSON object. Streaming JSON token-by-token to the UI is meaningless — the user sees `{`, `"summary"`, `":"`, partial strings — nothing readable until the full response arrives and is parsed. That defeats the purpose of streaming entirely.
+
+A streaming endpoint exists to give users a progressively readable response. Plain prose serves that purpose: each token is a real word that builds a sentence the user can follow in real time. The output contract changes from a machine-readable JSON object to a human-readable narrative, which requires a different prompt.
+
+Reusing `analyze-system.st` with streaming was attempted and confirmed broken during development — the streamed output was JSON fragments.
+
+**Tradeoff:** Two prompt files to maintain for analysis. If the scope of what "analysis" means changes, both files need to stay aligned even though their output formats differ.

@@ -1,0 +1,23 @@
+<div class="analyze-panel">
+    <div class="analyze-panel__input-group">
+        <textarea
+            class="analyze-panel__textarea"
+            [(ngModel)]="inputText"
+            placeholder="Paste or type text to analyze..."
+            rows="6"
+            [disabled]="state().streaming">
+        </textarea>
+        <button
+            class="analyze-panel__button"
+            (click)="analyze()"
+            [disabled]="!inputText.trim() || state().streaming">
+            {{ state().streaming ? 'Analyzing...' : 'Analyze' }}
+        </button>
+    </div>
+
+    <app-stream-result
+        [text]="state().text"
+        [streaming]="state().streaming"
+        [error]="state().error">
+    </app-stream-result>
+</div>

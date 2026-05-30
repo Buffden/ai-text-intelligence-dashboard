@@ -59,7 +59,8 @@ class TextAnalysisServiceTest {
         when(chatClientBuilder.build()).thenReturn(chatClient);
         Resource analyzePrompt = new ByteArrayResource("You are a text analysis assistant.".getBytes(StandardCharsets.UTF_8));
         Resource classifyPrompt = new ByteArrayResource("You are a text classification assistant.".getBytes(StandardCharsets.UTF_8));
-        service = new TextAnalysisService(chatClientBuilder, new ObjectMapper(), classifyPrompt, analyzePrompt, testLlmProperties());
+        Resource streamPrompt = new ByteArrayResource("You are a streaming text analysis assistant.".getBytes(StandardCharsets.UTF_8));
+        service = new TextAnalysisService(chatClientBuilder, new ObjectMapper(), classifyPrompt, analyzePrompt, streamPrompt, testLlmProperties());
     }
 
     private LlmProperties testLlmProperties() {

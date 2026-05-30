@@ -1,0 +1,11 @@
+<div class="stream-result">
+    @if (error) {
+        <div class="stream-result__error">{{ error }}</div>
+    } @else if (text) {
+        <div class="stream-result__text">
+            {{ text }}<span *ngIf="streaming" class="stream-result__cursor">|</span>
+        </div>
+    } @else if (streaming) {
+        <div class="stream-result__thinking">Analyzing...</div>
+    }
+</div>

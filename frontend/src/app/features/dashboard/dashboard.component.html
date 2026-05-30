@@ -1,0 +1,38 @@
+<div class="dashboard">
+    <header class="dashboard__header">
+        <h1 class="dashboard__title">AI Text Intelligence Dashboard</h1>
+    </header>
+
+    <nav class="dashboard__tabs">
+        <button
+            class="dashboard__tab"
+            [class.dashboard__tab--active]="activeTab() === 'analyze'"
+            (click)="setTab('analyze')">
+            Analyze
+        </button>
+        <button
+            class="dashboard__tab"
+            [class.dashboard__tab--active]="activeTab() === 'classify'"
+            (click)="setTab('classify')">
+            Classify
+        </button>
+        <button
+            class="dashboard__tab"
+            [class.dashboard__tab--active]="activeTab() === 'chat'"
+            (click)="setTab('chat')">
+            Chat
+        </button>
+    </nav>
+
+    <main class="dashboard__content">
+        @if (activeTab() === 'analyze') {
+            <app-analyze-panel />
+        }
+        @if (activeTab() === 'classify') {
+            <app-classify-panel />
+        }
+        @if (activeTab() === 'chat') {
+            <app-chat-panel />
+        }
+    </main>
+</div>

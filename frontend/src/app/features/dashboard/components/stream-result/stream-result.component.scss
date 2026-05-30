@@ -1,0 +1,38 @@
+.stream-result {
+    min-height: 80px;
+    padding: 16px;
+    border-radius: 8px;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+
+    &__text {
+        font-size: 15px;
+        line-height: 1.7;
+        color: #212529;
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow-wrap: break-word;
+    }
+
+    &__cursor {
+        display: inline-block;
+        animation: blink 1s step-end infinite;
+        color: #495057;
+        margin-left: 1px;
+    }
+
+    &__thinking {
+        color: #6c757d;
+        font-style: italic;
+        font-size: 14px;
+    }
+
+    &__error {
+        color: #dc3545;
+        font-size: 14px;
+    }
+}
+
+@keyframes blink {
+    50% { opacity: 0; }
+}
