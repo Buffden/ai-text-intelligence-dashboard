@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { ChatService } from '../../../../core/services/chat.service';
-import { ChatMessage, ConversationSummary } from '../../../../core/models/chat.model';
+import { ChatMessage, ChatStreamEvent, ConversationSummary } from '../../../../core/models/chat.model';
 
 const ACTIVE_CONVERSATION_KEY = 'chat_active_id';
 
@@ -94,24 +94,41 @@ export class ChatPanelComponent implements OnInit, OnDestroy {
         if (!text || this.loading()) return;
 
         this.error.set(null);
-        this.messages.update(msgs => [...msgs, { role: 'user', content: text }]);
         this.inputText = '';
         this.loading.set(true);
+
+        // add user message + empty assistant placeholder for streaming
+        this.messages.update(msgs => [
+            ...msgs,
+            { role: 'user', content: text },
+            { role: 'assistant', content: '' },
+        ]);
         this.scrollToBottom();
 
-        const sub = this.chatService.send({
+        const sub = this.chatService.sendStream({
             conversationId: this.activeConversationId ?? undefined,
             message: text,
         }).subscribe({
-            next: (reply) => {
-                this.activeConversationId = reply.conversationId;
-                localStorage.setItem(ACTIVE_CONVERSATION_KEY, reply.conversationId);
-                this.messages.update(msgs => [...msgs, { role: 'assistant', content: reply.reply }]);
-                this.loading.set(false);
-                this.scrollToBottom();
-                this.refreshConversations();
+            next: (event: ChatStreamEvent) => {
+                if (event.type === 'conversation-id') {
+                    this.activeConversationId = event.conversationId;
+                    localStorage.setItem(ACTIVE_CONVERSATION_KEY, event.conversationId);
+                } else if (event.type === 'token') {
+                    this.messages.update(msgs => {
+                        const updated = [...msgs];
+                        const last = updated[updated.length - 1];
+                        updated[updated.length - 1] = { ...last, content: last.content + event.token };
+                        return updated;
+                    });
+                    this.scrollToBottom();
+                } else if (event.type === 'done') {
+                    this.loading.set(false);
+                    this.refreshConversations();
+                }
             },
             error: (err) => {
+                // remove the empty assistant placeholder on failure
+                this.messages.update(msgs => msgs.slice(0, -1));
                 this.error.set(err.message ?? 'Something went wrong. Please try again.');
                 this.loading.set(false);
             }

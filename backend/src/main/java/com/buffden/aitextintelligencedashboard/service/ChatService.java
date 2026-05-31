@@ -13,6 +13,7 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -73,6 +74,62 @@ public class ChatService {
                         msg.getMessageType().getValue(),
                         msg.getText()))
                 .toList();
+    }
+
+    public void chatStream(ChatRequest request, SseEmitter emitter) {
+        String conversationId = (request.getConversationId() != null && !request.getConversationId().isBlank())
+                ? request.getConversationId()
+                : UUID.randomUUID().toString();
+
+        List<Message> history = conversationStore.getHistory(conversationId);
+        StringBuilder fullReply = new StringBuilder();
+
+        // Send conversationId first so the frontend can persist it before tokens arrive
+        try {
+            emitter.send(SseEmitter.event().name("conversation-id").data(conversationId));
+        } catch (IOException e) {
+            emitter.completeWithError(e);
+            return;
+        }
+
+        chatClient.prompt()
+                .system(systemPrompt)
+                .messages(history)
+                .user(request.getMessage())
+                .stream()
+                .content()
+                .subscribe(
+                        token -> {
+                            try {
+                                fullReply.append(token);
+                                emitter.send(SseEmitter.event().data(token));
+                            } catch (IOException e) {
+                                emitter.completeWithError(e);
+                            }
+                        },
+                        error -> {
+                            try {
+                                emitter.send(SseEmitter.event().name("error")
+                                        .data(error.getMessage() != null ? error.getMessage() : "Unknown error"));
+                            } catch (IOException e) {
+                                // client already disconnected
+                            }
+                            emitter.completeWithError(error);
+                        },
+                        () -> {
+                            conversationStore.addMessages(conversationId, List.of(
+                                    new UserMessage(request.getMessage()),
+                                    new AssistantMessage(fullReply.toString())
+                            ));
+                            log.info("Chat stream complete, conversationId: {}, tokens: {}", conversationId, fullReply.length());
+                            try {
+                                emitter.send(SseEmitter.event().data("[DONE]"));
+                            } catch (IOException e) {
+                                // client already disconnected
+                            }
+                            emitter.complete();
+                        }
+                );
     }
 
     public List<ConversationSummary> listConversations() {

@@ -6,7 +6,9 @@ import com.buffden.aitextintelligencedashboard.dto.ChatRequest;
 import com.buffden.aitextintelligencedashboard.dto.ConversationSummary;
 import com.buffden.aitextintelligencedashboard.service.ChatService;
 import jakarta.validation.Valid;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 
@@ -23,6 +25,13 @@ public class ChatController {
     @PostMapping
     public ChatReply chat(@Valid @RequestBody ChatRequest request) {
         return chatService.chat(request);
+    }
+
+    @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter chatStream(@Valid @RequestBody ChatRequest request) {
+        SseEmitter emitter = new SseEmitter(0L);
+        chatService.chatStream(request, emitter);
+        return emitter;
     }
 
     // returns full conversation history

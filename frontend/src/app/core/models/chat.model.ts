@@ -21,3 +21,8 @@ export interface ConversationSummary {
     createdAt: string;   // ISO-8601 Instant from backend
     messageCount: number;
 }
+
+export type ChatStreamEvent =
+    | { type: 'conversation-id'; conversationId: string }
+    | { type: 'token'; token: string }
+    | { type: 'done' };
