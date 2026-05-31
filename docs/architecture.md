@@ -9,11 +9,12 @@ This document evolves alongside the project. Each week adds new capabilities —
 A straightforward three-layer system. The user interacts with an Angular frontend, which talks to a Spring Boot backend, which calls the LLM API. Nothing clever — the goal is a clean, correct implementation of this pattern.
 
 ```
-┌─────────────────────┐         ┌──────────────────────────┐         ┌─────────────────┐
-│                     │  HTTP   │                          │  HTTPS  │                 │
-│   Angular Frontend  │────────▶│  Spring Boot + Spring AI │────────▶│  OpenAI / Claude│
-│                     │◀────────│                          │◀────────│                 │
-└─────────────────────┘  JSON   └──────────────────────────┘  JSON   └─────────────────┘
+┌─────────────────────┐          ┌──────────────────────────┐         ┌─────────────────┐
+│                     │  HTTP    │                          │  HTTPS  │                 │
+│   Angular Frontend  │─────────▶│  Spring Boot + Spring AI │────────▶│  OpenAI / Claude│
+│                     │◀─────────│                          │◀────────│                 │
+└─────────────────────┘  JSON /  └──────────────────────────┘  JSON / └─────────────────┘
+                       text/event-stream                    stream: true
 ```
 
 ---
@@ -22,10 +23,11 @@ A straightforward three-layer system. The user interacts with an Angular fronten
 
 ### Frontend (Angular)
 
-- Single page with a text input and results display
-- Calls the backend API endpoints
-- Handles loading state and error display
-- No direct LLM calls — ever
+- Three-tab dashboard: Chat, Analyze, Classify
+- **Chat tab** — collapsible conversation sidebar, conversation switching, live token streaming rendered progressively. Active conversation ID persisted in `localStorage` with TTL guard
+- **Analyze tab** — submits text and streams the narrative response token by token via `ReadableStream`
+- **Classify tab** — submits text and renders structured classification result (category badge, confidence bar, reasoning)
+- Consumes all streaming endpoints via `fetch` + `ReadableStream`; no direct LLM calls — ever
 
 ### Backend (Spring Boot + Spring AI)
 
@@ -64,17 +66,34 @@ A straightforward three-layer system. The user interacts with an Angular fronten
 - Model name passed from the call site rather than read from the API response — avoids mismatch between config names (`gpt-4o`) and versioned snapshot names returned by the API (`gpt-4o-2024-08-06`)
 - Cost logged as `LLM cost — model: gpt-4o, estimated: $0.001338` with six decimal places — rounding to two would show `$0.00` for most requests
 
+**Week 4 — Streaming and Conversation State (Extension 6)**
+- Adds `POST /api/analyze/stream` — a streaming variant of the analyze endpoint that returns each token as an SSE event
+- `SseEmitter` bridges Spring AI's reactive `Flux<String>` to the servlet response without migrating to WebFlux (see ADR-17)
+- A separate system prompt (`analyze-stream-system.st`) instructs the model to respond in plain prose — JSON fragments are meaningless mid-stream (see ADR-18)
+- The frontend consumes the stream via the Fetch API with `ReadableStream` — `EventSource` is GET-only and can't carry a request body (see ADR-19)
+- Signals accumulate tokens in place; each incoming chunk calls `signal.update()` with no Zone.js wrapper required
+
+**Week 4 — Streaming and Conversation State (Extension 7)**
+- Adds `POST /api/chat/stream` — a stateful streaming chat endpoint. Each request sends the full conversation history to the LLM and streams the reply back token-by-token via SSE
+- Adds `GET /api/chat/{conversationId}/history` — returns the full message list for a conversation
+- Adds `GET /api/chat/conversations` — returns all active conversations as summaries (id, title, createdAt, messageCount), sorted newest-first. Title is derived from the first user message truncated to 60 characters
+- `ConversationStore` is a custom `@Component` backed by `ConcurrentHashMap<String, ConversationEntry>`. `compute()` ensures atomic read-modify-write on each turn. `listAll()` returns `List.copyOf()` snapshots (see ADR-21)
+- History is truncated to the last 20 messages (sliding window) before each LLM call to prevent context window overflow (see ADR-22)
+- `@Scheduled(fixedDelay = 600_000)` evicts conversations older than 1 hour — `fixedDelay` prevents overlapping sweeps
+- The backend sends a named `event: conversation-id` as the first SSE event, before any tokens, so the frontend can persist the ID before the reply streams in (see ADR-20)
+- The frontend sidebar lists all conversations, supports conversation switching, and restores state from `localStorage` on reload with TTL guard against expired IDs
+
 ### LLM Provider (OpenAI / Claude)
 
 - Called exclusively by the backend
 - Configured via Spring AI's provider abstraction — switching providers requires only a config change, not code changes
-- Uses structured output / JSON mode to enforce response format
+- Uses structured output / JSON mode for the `analyze` and `classify` endpoints — streaming endpoints use prose prompts (JSON fragments are unreadable mid-stream)
 
 ---
 
 ## API Contract
 
-All endpoints accept the same request body:
+**Analyze and classify** endpoints accept the same request body:
 
 ```json
 {
@@ -82,13 +101,20 @@ All endpoints accept the same request body:
 }
 ```
 
-All endpoints return the same error shape on failure:
+JSON endpoints (`/api/analyze`, `/api/classify`) return this error shape on failure:
 
 ```json
 {
   "error": "A human-readable description of what went wrong",
   "code": "LLM_UNAVAILABLE | INVALID_INPUT | PARSE_ERROR"
 }
+```
+
+SSE streaming endpoints (`/api/analyze/stream`, `/api/chat/stream`) signal errors as a named SSE event instead of an HTTP error body — the connection is already open when the failure occurs:
+
+```text
+event: error
+data: LLM stream failed\n\n
 ```
 
 ### `POST /api/analyze` — Week 1
@@ -117,6 +143,69 @@ All endpoints return the same error shape on failure:
 }
 ```
 
+### `POST /api/analyze/stream` — Week 4 (Extension 6)
+
+Accepts the same `{ "text": "..." }` body. Response is `Content-Type: text/event-stream`. Each SSE event is a raw token of prose narrative. Stream ends with `data: [DONE]`.
+
+```text
+data: The\n\n
+data:  article\n\n
+data:  discusses\n\n
+...
+data: [DONE]\n\n
+```
+
+### `POST /api/chat/stream` — Week 4 (Extension 7)
+
+**Request body:**
+
+```json
+{
+  "conversationId": "optional-uuid-for-existing-conversation",
+  "message": "What is the main argument of this article?"
+}
+```
+
+Response is `Content-Type: text/event-stream`. Three event types in sequence:
+
+```text
+event: conversation-id
+data: <uuid>\n\n
+
+data: The\n\n
+data:  main\n\n
+...
+data: [DONE]\n\n
+```
+
+### `GET /api/chat/{conversationId}/history` — Week 4 (Extension 7)
+
+**Response (success):**
+
+```json
+[
+  { "role": "user",      "content": "What is the sentiment?" },
+  { "role": "assistant", "content": "The sentiment is positive..." }
+]
+```
+
+### `GET /api/chat/conversations` — Week 4 (Extension 7)
+
+**Response (success):**
+
+```json
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "title": "What is the sentiment of this ar...",
+    "createdAt": "2025-05-31T10:30:00Z",
+    "messageCount": 4
+  }
+]
+```
+
+Sorted newest-first. Title is derived from the first user message, truncated to 60 characters.
+
 ---
 
 ## Prompt Design
@@ -132,6 +221,10 @@ A separate system prompt for `/api/classify` embeds 10 labelled examples across 
 ### Week 2 — Prompt injection hardening (`analyze-system.st`)
 
 User input on `/api/analyze` is wrapped in `<text>...</text>` delimiters before being passed to the model. The system prompt explicitly tells the model that content inside those tags is data to analyze, not instructions to follow. Output schema validation acts as the second line of defense — any injection that bypasses the prompt still has to produce valid JSON matching the `AnalysisResponse` contract.
+
+### Week 4 — Streaming narrative prompt (`analyze-stream-system.st`)
+
+A dedicated prompt for `/api/analyze/stream` that instructs the model to respond in plain prose rather than JSON. The structured `analyze-system.st` prompt cannot be reused for streaming — JSON token-by-token produces unreadable fragments. Prose streams naturally: each token is a word that builds a readable sentence in real time.
 
 ---
 
@@ -157,5 +250,11 @@ User input on `/api/analyze` is wrapped in `<text>...</text>` delimiters before 
 | Timeout configuration | 3 | `LlmClientConfig` wires values from `application.yaml` | Timeouts belong on the HTTP client, not in application logic; externalizing them means no code change to tune them |
 | Cost tracking model name | 3 | Passed from call site (config value) | API returns versioned snapshot names; config has short names — they don't match for pricing lookup. Call site always knows the intended model name |
 | Pricing config location | 3 | Nested under each model in `app.llm.models` | Price is a property of a model, not a global config — grouping them together makes it obvious which prices apply to which model |
+| SSE implementation | 4 | `SseEmitter` (MVC) over WebFlux | Can't run MVC and WebFlux together; migrating all existing endpoints is out of scope. `SseEmitter` bridges the Flux without touching existing code |
+| Streaming prompt | 4 | Separate `analyze-stream-system.st` in prose | JSON streams as unreadable fragments — streaming and structured JSON output are incompatible. A prose prompt is required |
+| Chat streaming method | 4 | POST + Fetch API over GET + EventSource | `EventSource` is GET-only; chat needs a JSON request body. Fetch with `Accept: text/event-stream` supports both |
+| Conversation ID delivery | 4 | First named SSE event before tokens | Headers can't be read mid-stream; two-request handshake adds a round trip. First-event approach is zero extra latency and fits the existing SSE loop |
+| Conversation store | 4 | Custom `ConcurrentHashMap` over `MessageWindowChatMemory` | Spring AI's advisor is opaque — can't list or inspect conversations externally. Custom store enables the conversations and history endpoints |
+| History truncation strategy | 4 | Sliding window (last 20 messages) | Token counting requires a Java tokenizer not in the current stack. 20 messages ≈ 2–4k tokens, well within GPT-4o's 128k window |
 
 Detailed reasoning for each decision lives in [`decisions.md`](./decisions.md).

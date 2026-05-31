@@ -251,3 +251,68 @@ A streaming endpoint exists to give users a progressively readable response. Pla
 Reusing `analyze-system.st` with streaming was attempted and confirmed broken during development — the streamed output was JSON fragments.
 
 **Tradeoff:** Two prompt files to maintain for analysis. If the scope of what "analysis" means changes, both files need to stay aligned even though their output formats differ.
+
+---
+
+## ADR-19: POST with Fetch over GET with EventSource for streaming chat *(Week 4 — Extension 7)*
+
+**Decision:** The `/api/chat/stream` endpoint uses HTTP POST rather than GET. The Angular frontend consumes it via the Fetch API with `ReadableStream` rather than `EventSource`.
+
+**Why:**
+
+`EventSource` is the browser's native SSE client and handles reconnection automatically, but it is constrained to GET requests. A chat endpoint needs a request body — the conversation ID and the user's message. Embedding these in query parameters creates URL length risks for long messages and exposes message content in browser history and server access logs.
+
+Using `fetch` with `{ method: 'POST', headers: { 'Accept': 'text/event-stream' }, body: JSON.stringify(...) }` gives full control over the request while still allowing the response to be consumed as a stream via `response.body.getReader()`. The same pattern was already established for `/api/analyze/stream` in Extension 6.
+
+**Tradeoff:** Fetch-based SSE does not reconnect automatically. If the stream drops mid-response, the user must retry. For an interactive chat interface this is acceptable — dropping a half-streamed response is less confusing than an automatic reconnect that replays or duplicates content.
+
+---
+
+## ADR-20: conversation-id sent as the first named SSE event *(Week 4 — Extension 7)*
+
+**Decision:** When a new conversation is created, the backend sends a named `event: conversation-id` / `data: <uuid>` event as the very first SSE event, before any token events.
+
+**Why:**
+
+The backend is the source of truth for conversation identity — it generates the UUID and creates the `ConversationStore` entry. The frontend needs this ID before the streaming reply completes so it can persist the conversation reference (e.g. in `localStorage`) and refresh the sidebar list without waiting for the full response.
+
+Three alternatives were considered:
+
+1. **Response header** — SSE headers are sent once before the stream starts. A header cannot be read from a streaming Fetch response while the body is still being consumed. Not viable.
+2. **Two-request handshake** — a first request creates the conversation and returns the ID; a second starts the stream. Adds a round trip and coordination complexity.
+3. **First named SSE event** — the stream starts immediately, the first event carries the ID, subsequent events carry tokens. The frontend receives the ID before the first word is displayed and can act on it immediately.
+
+The first-event approach adds no round trips and fits naturally into the existing SSE event processing loop.
+
+**Tradeoff:** The frontend must handle two distinct event types (`conversation-id` and token data) in the same stream. The `ChatStreamEvent` discriminated union type makes this explicit and type-safe.
+
+---
+
+## ADR-21: Custom ConversationStore over Spring AI's MessageWindowChatMemory *(Week 4 — Extension 7)*
+
+**Decision:** Conversation state is managed by a custom `ConversationStore` component backed by a `ConcurrentHashMap` rather than Spring AI's `MessageWindowChatMemory`.
+
+**Why:**
+
+`MessageWindowChatMemory` is designed to be wired into a `ChatClient` as an advisor — it is opaque to application code. This creates two problems:
+
+1. **No external visibility** — the conversations listing endpoint (`GET /api/chat/conversations`) and the history endpoint (`GET /api/chat/{id}/history`) both need to iterate or look up conversation state from outside the `ChatClient`. There is no supported way to do this through the advisor API without accessing internal state.
+2. **Scoping ambiguity** — the advisor is attached to the `ChatClient`, not to a request. Sharing a single `ChatClient` bean across concurrent conversations requires careful scoping that the advisor API does not make obvious.
+
+A `ConcurrentHashMap<String, ConversationEntry>` is fully transparent: the service can read, write, list, and snapshot entries at will. It is also directly testable without any Spring AI context.
+
+**Tradeoff:** The sliding window logic and TTL cleanup are written from scratch rather than using tested library code. The implementation is small (< 80 lines) and the behaviour is clearly defined, so this is not a meaningful risk.
+
+---
+
+## ADR-22: Sliding window (fixed message count) over token-budget truncation *(Week 4 — Extension 7)*
+
+**Decision:** History truncation keeps the last N messages (default: 20) rather than counting tokens and dropping messages until a token budget is met.
+
+**Why:**
+
+Token-budget truncation is more accurate — a long single message consumes as many context tokens as ten short ones, and a fixed message count does not account for this. However, token counting on the Java side requires a tokenizer that matches the model's actual tokenizer. OpenAI uses a BPE tokenizer (tiktoken). Integrating tiktoken in Java requires an external library or a JNI binding, neither of which is part of Spring AI's standard surface at this stage.
+
+The sliding window is a deliberate simplification. For typical chat messages (a few sentences each), a 20-message window uses roughly 2,000–4,000 tokens, comfortably within GPT-4o's 128k context window. The risk of hitting the context limit with this approach is low enough that the implementation complexity of token counting is not justified yet.
+
+**Tradeoff:** A conversation with unusually long messages (pasted documents, code blocks) could still exceed the context window despite the message count limit. Token-budget truncation is the correct long-term approach and should replace this when a suitable tokenizer is available in the stack.

@@ -9,6 +9,16 @@ package "controller" {
     - service: TextAnalysisService
     + analyze(request: AnalyzeRequest): AnalysisResponse
     + classify(request: AnalyzeRequest): ClassifyResponse
+    ' Week 4 — Extension 6
+    + streamAnalysis(request: AnalyzeRequest): SseEmitter
+  }
+
+  ' Week 4 — Extension 7
+  class ChatController {
+    - chatService: ChatService
+    + streamChat(request: ChatRequest): SseEmitter
+    + getHistory(conversationId: String): List<Message>
+    + listConversations(): List<ConversationSummary>
   }
 }
 
@@ -40,21 +50,61 @@ package "service" {
     - random: Random
     + analyze(request: AnalyzeRequest): AnalysisResponse
     + classify(request: AnalyzeRequest): ClassifyResponse
+    ' Week 4 — Extension 6
+    + streamAnalysis(text: String, emitter: SseEmitter): void
     - attemptAnalyze(request: AnalyzeRequest, modelOverride: String): AnalysisResponse
     - attemptClassify(request: AnalyzeRequest, modelOverride: String): ClassifyResponse
     - parseResponse(raw: String): AnalysisResponse
     - classifyResponse(raw: String): ClassifyResponse
-    ' Week 3 — Extension 4
     - sleepBeforeRetry(attempt: int, e: HttpClientErrorException): void
-    ' Week 3 — Extension 5
     - logUsage(response: ChatResponse, latencyMs: long, isFallback: boolean, modelName: String): void
     - findPricing(modelName: String): Optional<LlmProperties.ModelPricing>
+  }
+
+  ' Week 4 — Extension 7
+  class ChatService {
+    - chatClient: ChatClient
+    - conversationStore: ConversationStore
+    + chatStream(request: ChatRequest, emitter: SseEmitter): void
+    + getHistory(conversationId: String): List<Message>
+    + listConversations(): List<ConversationSummary>
+  }
+
+  ' Week 4 — Extension 7
+  class ConversationStore {
+    - conversations: ConcurrentHashMap<String, ConversationEntry>
+    + getOrCreate(conversationId: String): List<Message>
+    + append(conversationId: String, user: String, assistant: String): void
+    + getHistory(conversationId: String): List<Message>
+    + listAll(): List<ConversationSnapshot>
+    + evictStale(): void
+  }
+
+  ' Week 4 — inner record of ConversationStore
+  class ConversationSnapshot <<record>> {
+    + id: String
+    + messages: List<Message>
+    + createdAt: Instant
   }
 }
 
 package "dto" {
   class AnalyzeRequest {
     - text: String
+  }
+
+  ' Week 4 — Extension 7
+  class ChatRequest {
+    - conversationId: String
+    - message: String
+  }
+
+  ' Week 4 — Extension 7
+  class ConversationSummary {
+    - id: String
+    - title: String
+    - createdAt: Instant
+    - messageCount: int
   }
 
   ' Week 1
@@ -121,10 +171,15 @@ package "exception.handler" {
 
 ' ── Dependencies ──────────────────────────────────────────────
 TextAnalysisController --> TextAnalysisService : uses
+' Week 4 — Extension 7
+ChatController --> ChatService : uses
 
 TextAnalysisService --> ChatClient : uses
 TextAnalysisService --> LlmProperties : reads
 LlmClientConfig --> LlmProperties : reads
+' Week 4 — Extension 7
+ChatService --> ChatClient : uses
+ChatService --> ConversationStore : uses
 
 ' ── Data flow (usage, not ownership) ──────────────────────────
 TextAnalysisController ..> AnalyzeRequest : accepts
@@ -135,12 +190,23 @@ TextAnalysisService ..> AnalyzeRequest : reads
 TextAnalysisService ..> AnalysisResponse : produces
 TextAnalysisService ..> ClassifyResponse : produces
 
+' Week 4 — Extension 7
+ChatController ..> ChatRequest : accepts
+ChatController ..> ConversationSummary : returns
+ChatService ..> ChatRequest : reads
+ChatService ..> ConversationSummary : produces
+
 AnalysisResponse --> Sentiment : uses
 ClassifyResponse --> Category : uses
+
+' ── ConversationStore produces snapshots ──────────────────────
+ConversationStore ..> ConversationSnapshot : produces
 
 ' ── Exceptions thrown by service ──────────────────────────────
 TextAnalysisService ..> LlmUnavailableException : «throws»
 TextAnalysisService ..> ParseException : «throws»
+' Week 4 — Extension 7
+ChatService ..> LlmUnavailableException : «throws»
 
 ' ── Exception handler intercepts ──────────────────────────────
 GlobalExceptionHandler ..> LlmUnavailableException : «handles»
@@ -158,6 +224,8 @@ ParseException --|> RuntimeException
 ' ── External dependency (Spring AI) ───────────────────────────
 class ChatClient <<external>> {
   + call(prompt: Prompt): ChatResponse
+  ' Week 4 — key streaming method
+  + stream(prompt: Prompt): Flux<String>
 }
 
 @enduml
