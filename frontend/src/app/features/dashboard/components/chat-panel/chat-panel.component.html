@@ -1,1 +1,50 @@
-<p>chat-panel works!</p>
+<div class="chat-panel">
+    <div class="chat-panel__actions">
+        @if (messages().length > 0) {
+        <button class="chat-panel__clear"
+                (click)="clearConversation()">Clear conversation</button>
+        }
+    </div>
+
+    <div class="chat-panel__messages"
+         #messagesList>
+        @if (messages().length === 0 && !loading()) {
+        <div class="chat-panel__empty">Start a conversation...</div>
+        }
+
+        @for (msg of messages(); track $index) {
+        <div class="chat-panel__message chat-panel__message--{{ msg.role }}">
+            {{ msg.content }}
+        </div>
+        }
+
+        @if (loading() && messages().length === 0) {
+        <div class="chat-panel__loading">Loading history...</div>
+        }
+
+        @if (loading() && messages().length > 0) {
+        <div class="chat-panel__typing">
+            <span></span><span></span><span></span>
+        </div>
+        }
+    </div>
+
+    @if (error()) {
+    <div class="chat-panel__error">{{ error() }}</div>
+    }
+
+    <div class="chat-panel__input-group">
+        <textarea class="chat-panel__input"
+                  [(ngModel)]="inputText"
+                  (keydown)="onKeydown($event)"
+                  placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
+                  rows="2"
+                  [disabled]="loading()">
+        </textarea>
+        <button class="chat-panel__send"
+                (click)="send()"
+                [disabled]="!inputText.trim() || loading()">
+            Send
+        </button>
+    </div>
+</div>
