@@ -5,6 +5,7 @@ import { Subscription } from 'rxjs';
 import { LlmStreamService } from '../../../../core/services/llm-stream.service';
 import { StreamResultComponent } from '../stream-result/stream-result.component';
 import { StreamState } from '../../../../core/models/analysis.model';
+import { ANALYZE_PANEL_CONFIG } from './analyze-panel.config';
 
 @Component({
     selector: 'app-analyze-panel',
@@ -14,6 +15,9 @@ import { StreamState } from '../../../../core/models/analysis.model';
     styleUrl: './analyze-panel.component.scss',
 })
 export class AnalyzePanelComponent implements OnDestroy {
+
+    protected readonly config = ANALYZE_PANEL_CONFIG;
+
     inputText: string = '';
     state = signal<StreamState>({ streaming: false, text: '', error: null });
 

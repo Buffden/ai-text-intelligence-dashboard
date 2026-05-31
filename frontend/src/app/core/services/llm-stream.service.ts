@@ -1,15 +1,25 @@
 import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { ClassifyResult } from '../models/analysis.model';
 
 @Injectable({
     providedIn: 'root',
 })
 export class LlmStreamService {
 
+    private readonly baseUrl = 'http://localhost:8080/api';
+
+    constructor(private http: HttpClient) {}
+
+    classify(text: string): Observable<ClassifyResult> {
+        return this.http.post<ClassifyResult>(`${this.baseUrl}/classify`, { text });
+    }
+
     analyzeStream(text: string): Observable<string> {
         return new Observable<string>((observer) => {
             const controller = new AbortController();
-            const url = `http://localhost:8080/api/analyze/stream?text=${encodeURIComponent(text)}`;
+            const url = `${this.baseUrl}/analyze/stream?text=${encodeURIComponent(text)}`;
 
             fetch(url, {
                 method: 'GET',

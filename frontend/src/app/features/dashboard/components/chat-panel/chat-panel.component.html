@@ -1,5 +1,12 @@
 <div class="chat-panel">
 
+    <div class="chat-panel__intro">
+        <h2 class="chat-panel__intro-title">{{ config.intro.title }}</h2>
+        <p class="chat-panel__intro-desc">{{ config.intro.description }}</p>
+    </div>
+
+    <div class="chat-panel__body">
+
     <aside class="chat-panel__sidebar" [class.chat-panel__sidebar--collapsed]="sidebarCollapsed()">
         <div class="chat-panel__sidebar-header">
             @if (!sidebarCollapsed()) {
@@ -31,7 +38,10 @@
         <div class="chat-panel__messages"
              #messagesList>
             @if (messages().length === 0 && !loading()) {
-            <div class="chat-panel__empty">Start a conversation...</div>
+                <div class="chat-panel__empty">
+                    <h2 class="chat-panel__empty-title">{{ config.intro.emptyTitle }}</h2>
+                    <p class="chat-panel__empty-desc">{{ config.intro.emptyDescription }}</p>
+                </div>
             }
 
             @for (msg of messages(); track $index) {
@@ -69,6 +79,8 @@
                 Send
             </button>
         </div>
+    </div>
+
     </div>
 
 </div>

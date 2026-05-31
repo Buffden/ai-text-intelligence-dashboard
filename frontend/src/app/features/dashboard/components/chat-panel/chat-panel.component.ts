@@ -4,8 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { ChatService } from '../../../../core/services/chat.service';
 import { ChatMessage, ChatStreamEvent, ConversationSummary } from '../../../../core/models/chat.model';
-
-const ACTIVE_CONVERSATION_KEY = 'chat_active_id';
+import { CHAT_PANEL_CONFIG } from './chat-panel.config';
 
 @Component({
     selector: 'app-chat-panel',
@@ -15,6 +14,8 @@ const ACTIVE_CONVERSATION_KEY = 'chat_active_id';
     styleUrl: './chat-panel.component.scss',
 })
 export class ChatPanelComponent implements OnInit, OnDestroy {
+
+    protected readonly config = CHAT_PANEL_CONFIG;
 
     @ViewChild('messagesList') private messagesList!: ElementRef<HTMLDivElement>;
 
@@ -42,12 +43,12 @@ export class ChatPanelComponent implements OnInit, OnDestroy {
         const sub = this.chatService.getConversations().subscribe({
             next: (convs) => {
                 this.conversations.set(convs);
-                const savedId = localStorage.getItem(ACTIVE_CONVERSATION_KEY);
+                const savedId = localStorage.getItem(this.config.storageKey);
                 // only restore if the conversation still exists on the server (not expired)
                 if (savedId && convs.some(c => c.id === savedId)) {
                     this.selectConversation(savedId);
                 } else if (savedId) {
-                    localStorage.removeItem(ACTIVE_CONVERSATION_KEY);
+                    localStorage.removeItem(this.config.storageKey);
                 }
             },
             error: () => {} // sidebar failure is non-critical
@@ -59,7 +60,7 @@ export class ChatPanelComponent implements OnInit, OnDestroy {
         if (id === this.activeConversationId) return;
 
         this.activeConversationId = id;
-        localStorage.setItem(ACTIVE_CONVERSATION_KEY, id);
+        localStorage.setItem(this.config.storageKey, id);
         this.messages.set([]);
         this.error.set(null);
         this.loading.set(true);
@@ -80,7 +81,7 @@ export class ChatPanelComponent implements OnInit, OnDestroy {
 
     newChat(): void {
         this.activeConversationId = null;
-        localStorage.removeItem(ACTIVE_CONVERSATION_KEY);
+        localStorage.removeItem(this.config.storageKey);
         this.messages.set([]);
         this.error.set(null);
     }
@@ -112,7 +113,7 @@ export class ChatPanelComponent implements OnInit, OnDestroy {
             next: (event: ChatStreamEvent) => {
                 if (event.type === 'conversation-id') {
                     this.activeConversationId = event.conversationId;
-                    localStorage.setItem(ACTIVE_CONVERSATION_KEY, event.conversationId);
+                    localStorage.setItem(this.config.storageKey, event.conversationId);
                 } else if (event.type === 'token') {
                     this.messages.update(msgs => {
                         const updated = [...msgs];
