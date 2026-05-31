@@ -1,6 +1,6 @@
 @startuml sequence-happy-path
 
-title Sequence Diagram 1 — Happy Path
+title Sequence Diagram 1 - Happy Path
 
 skinparam sequenceMessageAlign center
 skinparam responseMessageBelowArrow true
