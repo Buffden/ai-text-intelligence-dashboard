@@ -25,7 +25,7 @@ jobs:
       - name: Install PlantUML
         run: |
           sudo apt-get update
-          sudo apt-get install -y plantuml
+          sudo apt-get install -y --no-install-recommends default-jre plantuml
 
       - name: Export .puml files → diagrams/
         run: |
