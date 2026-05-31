@@ -3,9 +3,9 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { ChatService } from '../../../../core/services/chat.service';
-import { ChatMessage } from '../../../../core/models/chat.model';
+import { ChatMessage, ConversationSummary } from '../../../../core/models/chat.model';
 
-const CONVERSATION_ID_KEY = 'chat_conversation_id';
+const ACTIVE_CONVERSATION_KEY = 'chat_active_id';
 
 @Component({
     selector: 'app-chat-panel',
@@ -18,35 +18,75 @@ export class ChatPanelComponent implements OnInit, OnDestroy {
 
     @ViewChild('messagesList') private messagesList!: ElementRef<HTMLDivElement>;
 
+    conversations = signal<ConversationSummary[]>([]);
     messages = signal<ChatMessage[]>([]);
     loading = signal(false);
     error = signal<string | null>(null);
+    sidebarCollapsed = signal(false);
     inputText = '';
 
-    private conversationId: string | null = null;
-    private subscription: Subscription | null = null;
+    toggleSidebar(): void {
+        this.sidebarCollapsed.update(v => !v);
+    }
 
-    constructor(private chatService: ChatService) { }
+    private activeConversationId: string | null = null;
+    private subscriptions = new Subscription();
+
+    constructor(private chatService: ChatService) {}
 
     ngOnInit(): void {
-        const savedId = localStorage.getItem(CONVERSATION_ID_KEY);
-        if (savedId) {
-            this.conversationId = savedId;
-            this.loading.set(true);
-            this.subscription = this.chatService.getHistory(savedId).subscribe({
-                next: (history) => {
-                    this.messages.set(history);
-                    this.loading.set(false);
-                    this.scrollToBottom();
-                },
-                error: () => {
-                    // conversation expired or not found, start fresh
-                    localStorage.removeItem(CONVERSATION_ID_KEY);
-                    this.conversationId = null;
-                    this.loading.set(false);
-                },
-            });
-        }
+        this.loadConversations();
+    }
+
+    private loadConversations(): void {
+        const sub = this.chatService.getConversations().subscribe({
+            next: (convs) => {
+                this.conversations.set(convs);
+                const savedId = localStorage.getItem(ACTIVE_CONVERSATION_KEY);
+                // only restore if the conversation still exists on the server (not expired)
+                if (savedId && convs.some(c => c.id === savedId)) {
+                    this.selectConversation(savedId);
+                } else if (savedId) {
+                    localStorage.removeItem(ACTIVE_CONVERSATION_KEY);
+                }
+            },
+            error: () => {} // sidebar failure is non-critical
+        });
+        this.subscriptions.add(sub);
+    }
+
+    selectConversation(id: string): void {
+        if (id === this.activeConversationId) return;
+
+        this.activeConversationId = id;
+        localStorage.setItem(ACTIVE_CONVERSATION_KEY, id);
+        this.messages.set([]);
+        this.error.set(null);
+        this.loading.set(true);
+
+        const sub = this.chatService.getHistory(id).subscribe({
+            next: (history) => {
+                this.messages.set(history);
+                this.loading.set(false);
+                this.scrollToBottom();
+            },
+            error: () => {
+                this.error.set('Failed to load conversation.');
+                this.loading.set(false);
+            }
+        });
+        this.subscriptions.add(sub);
+    }
+
+    newChat(): void {
+        this.activeConversationId = null;
+        localStorage.removeItem(ACTIVE_CONVERSATION_KEY);
+        this.messages.set([]);
+        this.error.set(null);
+    }
+
+    isActive(id: string): boolean {
+        return this.activeConversationId === id;
     }
 
     send(): void {
@@ -59,23 +99,32 @@ export class ChatPanelComponent implements OnInit, OnDestroy {
         this.loading.set(true);
         this.scrollToBottom();
 
-        this.subscription?.unsubscribe();
-        this.subscription = this.chatService.send({
-            conversationId: this.conversationId ?? undefined,
+        const sub = this.chatService.send({
+            conversationId: this.activeConversationId ?? undefined,
             message: text,
         }).subscribe({
             next: (reply) => {
-                this.conversationId = reply.conversationId;
-                localStorage.setItem(CONVERSATION_ID_KEY, reply.conversationId);
+                this.activeConversationId = reply.conversationId;
+                localStorage.setItem(ACTIVE_CONVERSATION_KEY, reply.conversationId);
                 this.messages.update(msgs => [...msgs, { role: 'assistant', content: reply.reply }]);
                 this.loading.set(false);
                 this.scrollToBottom();
+                this.refreshConversations();
             },
             error: (err) => {
                 this.error.set(err.message ?? 'Something went wrong. Please try again.');
                 this.loading.set(false);
-            },
+            }
         });
+        this.subscriptions.add(sub);
+    }
+
+    private refreshConversations(): void {
+        const sub = this.chatService.getConversations().subscribe({
+            next: (convs) => this.conversations.set(convs),
+            error: () => {}
+        });
+        this.subscriptions.add(sub);
     }
 
     onKeydown(event: KeyboardEvent): void {
@@ -83,15 +132,6 @@ export class ChatPanelComponent implements OnInit, OnDestroy {
             event.preventDefault();
             this.send();
         }
-    }
-
-    clearConversation(): void {
-        this.subscription?.unsubscribe();
-        this.conversationId = null;
-        localStorage.removeItem(CONVERSATION_ID_KEY);
-        this.messages.set([]);
-        this.error.set(null);
-        this.loading.set(false);
     }
 
     private scrollToBottom(): void {
@@ -103,6 +143,6 @@ export class ChatPanelComponent implements OnInit, OnDestroy {
     }
 
     ngOnDestroy(): void {
-        this.subscription?.unsubscribe();
+        this.subscriptions.unsubscribe();
     }
 }

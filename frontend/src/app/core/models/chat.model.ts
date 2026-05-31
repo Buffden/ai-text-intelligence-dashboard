@@ -14,3 +14,10 @@ export interface ChatReply {
     conversationId: string;
     reply: string;
 }
+
+export interface ConversationSummary {
+    id: string;
+    title: string;
+    createdAt: string;   // ISO-8601 Instant from backend
+    messageCount: number;
+}

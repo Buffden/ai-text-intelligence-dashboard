@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { ChatMessage, ChatReply, ChatRequest } from '../models/chat.model';
+import { ChatMessage, ChatReply, ChatRequest, ConversationSummary } from '../models/chat.model';
 
 @Injectable({
     providedIn: 'root',
@@ -18,5 +18,9 @@ export class ChatService {
 
     getHistory(conversationId: string): Observable<ChatMessage[]> {
         return this.http.get<ChatMessage[]>(`${this.baseUrl}/${conversationId}/history`);
+    }
+
+    getConversations(): Observable<ConversationSummary[]> {
+        return this.http.get<ConversationSummary[]>(`${this.baseUrl}/conversations`);
     }
 }
