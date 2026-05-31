@@ -17,6 +17,8 @@ public class ConversationStore {
 
     private record ConversationEntry(List<Message> messages, Instant createdAt) {}
 
+    public record ConversationSnapshot(String id, List<Message> messages, Instant createdAt) {}
+
     private final ConcurrentHashMap<String, ConversationEntry> store = new ConcurrentHashMap<>();
 
     private final ConversationProperties conversationProperties;
@@ -50,6 +52,15 @@ public class ConversationStore {
 
     public boolean exists(String conversationId) {
         return store.containsKey(conversationId);
+    }
+
+    public List<ConversationSnapshot> listAll() {
+        return store.entrySet().stream()
+                .map(e -> new ConversationSnapshot(
+                        e.getKey(),
+                        List.copyOf(e.getValue().messages()),
+                        e.getValue().createdAt()))
+                .toList();
     }
 
     @Scheduled(fixedRateString = "${app.conversation.cleanup-rate-ms}")

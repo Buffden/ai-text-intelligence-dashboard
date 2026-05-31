@@ -14,7 +14,7 @@ type Tab = 'analyze' | 'classify' | 'chat';
     styleUrl: './dashboard.component.scss',
 })
 export class DashboardComponent {
-    activeTab = signal<Tab>('analyze');
+    activeTab = signal<Tab>('chat');
 
     setTab(tab: Tab): void {
         this.activeTab.set(tab);

@@ -8,6 +8,9 @@ skinparam responseMessageBelowArrow true
 actor       Client
 participant "TextAnalysisController" as Controller
 participant "TextAnalysisService"    as Service
+participant "ChatController"         as ChatController
+participant "ChatService"            as ChatService
+participant "ConversationStore"      as ConversationStore
 participant "ChatClient\n(Spring AI)" as ChatClient
 participant "OpenAI API"             as OpenAI
 
@@ -88,5 +91,111 @@ Service -> Service : logUsage(\n  inputTokens, outputTokens,\n  model: gpt-4o-mi
 Service --> Controller : AnalysisResponse
 
 Controller --> Client : 200 OK\n(same response shape — fallback is transparent)
+
+== Week 4 — POST /api/analyze/stream (Extension 6) ==
+
+Client -> Controller : POST /api/analyze/stream\n{ "text": "..." }\nAccept: text/event-stream
+
+Controller -> Controller : @Valid — validate request
+
+Controller -> Controller : create SseEmitter(0L)\n(no timeout — owned by stream)
+
+Controller --> Client : 200 OK\nContent-Type: text/event-stream\n(connection held open by Spring MVC)
+
+note over Controller : SseEmitter returned to Spring MVC.\nService subscription runs on Reactor scheduler thread.
+
+Controller -> Service : streamAnalysis(text, emitter)
+
+Service -> ChatClient : stream().content(analyze-stream-system.st, text)
+
+ChatClient -> OpenAI : HTTPS request\n(model: gpt-4o, stream: true)
+
+loop for each token
+  OpenAI --> ChatClient : token chunk
+  ChatClient --> Service : Flux<String> onNext(token)
+  Service -> Controller : emitter.send(token)
+  Controller --> Client : data: <token>\n\n
+end
+
+OpenAI --> ChatClient : stream complete
+ChatClient --> Service : Flux<String> onComplete
+Service -> Controller : emitter.send("[DONE]")
+Controller --> Client : data: [DONE]\n\n
+Service -> Controller : emitter.complete()
+
+== Week 4 — POST /api/chat/stream, new conversation (Extension 7) ==
+
+Client -> ChatController : POST /api/chat/stream\n{ "message": "What is the sentiment?" }\nAccept: text/event-stream
+
+ChatController -> ChatController : @Valid — validate request
+
+ChatController -> ChatController : create SseEmitter(0L)
+
+ChatController --> Client : 200 OK\nContent-Type: text/event-stream\n(connection held open)
+
+ChatController -> ChatService : chatStream(request, emitter)
+
+ChatService -> ChatService : conversationId is null\n→ generate new UUID
+
+ChatService -> ConversationStore : getOrCreate(newUUID)\n→ empty history created
+
+ChatService -> ChatController : emitter.send(\n  event: conversation-id,\n  data: <new-uuid>\n)
+ChatController --> Client : event: conversation-id\ndata: <new-uuid>\n\n
+
+note over ChatService : History = [UserMessage("What is the sentiment?")]
+
+ChatService -> ChatClient : stream().content(\n  history (1 message)\n)
+
+ChatClient -> OpenAI : HTTPS request\n(model: gpt-4o, full history)
+
+loop for each token
+  OpenAI --> ChatClient : token chunk
+  ChatClient --> ChatService : Flux<String> onNext(token)
+  ChatService -> ChatController : emitter.send(token)
+  ChatController --> Client : data: <token>\n\n
+end
+
+OpenAI --> ChatClient : stream complete
+ChatClient --> ChatService : Flux<String> onComplete
+ChatService -> ConversationStore : append(conversationId,\n  userMessage,\n  fullAssistantReply\n)
+ChatService -> ChatController : emitter.send("[DONE]")
+ChatController --> Client : data: [DONE]\n\n
+ChatService -> ChatController : emitter.complete()
+
+== Week 4 — POST /api/chat/stream, follow-up turn ==
+
+Client -> ChatController : POST /api/chat/stream\n{ "conversationId": "<uuid>",\n  "message": "Which topics are covered?" }\nAccept: text/event-stream
+
+ChatController -> ChatController : @Valid — validate request
+
+ChatController -> ChatController : create SseEmitter(0L)
+
+ChatController --> Client : 200 OK\nContent-Type: text/event-stream\n(connection held open)
+
+ChatController -> ChatService : chatStream(request, emitter)
+
+ChatService -> ConversationStore : getOrCreate("<uuid>")\n→ existing history returned\n  [UserMessage, AssistantMessage]
+
+note over ChatService : History = [\n  UserMessage("What is the sentiment?"),\n  AssistantMessage("The sentiment is positive..."),\n  UserMessage("Which topics are covered?")\n]\nSliding window: last 20 msgs
+
+ChatService -> ChatClient : stream().content(\n  history (3 messages)\n)
+
+ChatClient -> OpenAI : HTTPS request\n(model: gpt-4o, full 3-message history)
+
+note over OpenAI : Model sees entire conversation.\nReply can reference prior turns.
+
+loop for each token
+  OpenAI --> ChatClient : token chunk
+  ChatClient --> ChatService : Flux<String> onNext(token)
+  ChatService -> ChatController : emitter.send(token)
+  ChatController --> Client : data: <token>\n\n
+end
+
+OpenAI --> ChatClient : stream complete
+ChatClient --> ChatService : onComplete
+ChatService -> ConversationStore : append(conversationId,\n  "Which topics...",\n  fullAssistantReply\n)
+ChatService -> ChatController : emitter.send("[DONE]")
+ChatController --> Client : data: [DONE]\n\n
+ChatService -> ChatController : emitter.complete()\n(connection closed)
 
 @enduml

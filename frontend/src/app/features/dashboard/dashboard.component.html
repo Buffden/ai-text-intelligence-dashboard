@@ -6,6 +6,12 @@
     <nav class="dashboard__tabs">
         <button
             class="dashboard__tab"
+            [class.dashboard__tab--active]="activeTab() === 'chat'"
+            (click)="setTab('chat')">
+            Chat
+        </button>
+        <button
+            class="dashboard__tab"
             [class.dashboard__tab--active]="activeTab() === 'analyze'"
             (click)="setTab('analyze')">
             Analyze
@@ -16,23 +22,17 @@
             (click)="setTab('classify')">
             Classify
         </button>
-        <button
-            class="dashboard__tab"
-            [class.dashboard__tab--active]="activeTab() === 'chat'"
-            (click)="setTab('chat')">
-            Chat
-        </button>
     </nav>
 
     <main class="dashboard__content">
+        @if (activeTab() === 'chat') {
+            <app-chat-panel />
+        }
         @if (activeTab() === 'analyze') {
             <app-analyze-panel />
         }
         @if (activeTab() === 'classify') {
             <app-classify-panel />
-        }
-        @if (activeTab() === 'chat') {
-            <app-chat-panel />
         }
     </main>
 </div>

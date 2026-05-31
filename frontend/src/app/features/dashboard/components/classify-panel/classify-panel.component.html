@@ -1,1 +1,51 @@
-<p>classify-panel works!</p>
+<div class="classify-panel">
+
+    <div class="classify-panel__intro">
+        <h2 class="classify-panel__intro-title">{{ config.intro.title }}</h2>
+        <p class="classify-panel__intro-desc">{{ config.intro.description }}</p>
+    </div>
+
+    <div class="classify-panel__input-group">
+        <textarea
+            class="classify-panel__textarea"
+            [(ngModel)]="inputText"
+            placeholder="Paste or type text to classify..."
+            rows="6"
+            [disabled]="loading()">
+        </textarea>
+        <button
+            class="classify-panel__button"
+            (click)="classify()"
+            [disabled]="!inputText.trim() || loading()">
+            {{ loading() ? 'Classifying...' : 'Classify' }}
+        </button>
+    </div>
+
+    @if (error()) {
+        <div class="classify-panel__error">{{ error() }}</div>
+    }
+
+    @if (result()) {
+        <div class="classify-panel__result">
+            <div class="classify-panel__category classify-panel__category--{{ result()!.category }}">
+                {{ result()!.category }}
+            </div>
+
+            <div class="classify-panel__confidence">
+                <div class="classify-panel__confidence-header">
+                    <span>Confidence</span>
+                    <span>{{ confidencePercent }}%</span>
+                </div>
+                <div class="classify-panel__confidence-track">
+                    <div class="classify-panel__confidence-fill" [style.width.%]="confidencePercent"></div>
+                </div>
+            </div>
+
+            <div class="classify-panel__reasoning">
+                <p class="classify-panel__reasoning-label">Reasoning</p>
+                <p class="classify-panel__reasoning-text">{{ result()!.reasoning }}</p>
+            </div>
+        </div>
+    }
+
+</div>

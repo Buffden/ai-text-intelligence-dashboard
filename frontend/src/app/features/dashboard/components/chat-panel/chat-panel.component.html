@@ -1,1 +1,86 @@
-<p>chat-panel works!</p>
+<div class="chat-panel">
+
+    <div class="chat-panel__intro">
+        <h2 class="chat-panel__intro-title">{{ config.intro.title }}</h2>
+        <p class="chat-panel__intro-desc">{{ config.intro.description }}</p>
+    </div>
+
+    <div class="chat-panel__body">
+
+    <aside class="chat-panel__sidebar" [class.chat-panel__sidebar--collapsed]="sidebarCollapsed()">
+        <div class="chat-panel__sidebar-header">
+            @if (!sidebarCollapsed()) {
+                <button class="chat-panel__new-chat" (click)="newChat()">+ New Chat</button>
+            }
+            <button class="chat-panel__sidebar-toggle" (click)="toggleSidebar()" [title]="sidebarCollapsed() ? 'Expand sidebar' : 'Collapse sidebar'">
+                {{ sidebarCollapsed() ? '›' : '‹' }}
+            </button>
+        </div>
+
+        @if (!sidebarCollapsed()) {
+            <div class="chat-panel__conversation-list">
+                @if (conversations().length === 0) {
+                    <div class="chat-panel__no-conversations">No conversations yet</div>
+                }
+                @for (conv of conversations(); track conv.id) {
+                    <button class="chat-panel__conversation-item"
+                            [class.chat-panel__conversation-item--active]="isActive(conv.id)"
+                            (click)="selectConversation(conv.id)">
+                        <span class="chat-panel__conversation-title">{{ conv.title }}</span>
+                        <span class="chat-panel__conversation-meta">{{ conv.messageCount / 2 | number:'1.0-0' }} turns</span>
+                    </button>
+                }
+            </div>
+        }
+    </aside>
+
+    <div class="chat-panel__main">
+        <div class="chat-panel__messages"
+             #messagesList>
+            @if (messages().length === 0 && !loading()) {
+                <div class="chat-panel__empty">
+                    <h2 class="chat-panel__empty-title">{{ config.intro.emptyTitle }}</h2>
+                    <p class="chat-panel__empty-desc">{{ config.intro.emptyDescription }}</p>
+                </div>
+            }
+
+            @for (msg of messages(); track $index) {
+            <div class="chat-panel__message chat-panel__message--{{ msg.role }}">
+                {{ msg.content }}
+            </div>
+            }
+
+            @if (loading() && messages().length === 0) {
+            <div class="chat-panel__loading">Loading...</div>
+            }
+
+            @if (loading() && messages().length > 0) {
+            <div class="chat-panel__typing">
+                <span></span><span></span><span></span>
+            </div>
+            }
+        </div>
+
+        @if (error()) {
+        <div class="chat-panel__error">{{ error() }}</div>
+        }
+
+        <div class="chat-panel__input-group">
+            <textarea class="chat-panel__input"
+                      [(ngModel)]="inputText"
+                      (keydown)="onKeydown($event)"
+                      placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
+                      rows="2"
+                      [disabled]="loading()">
+            </textarea>
+            <button class="chat-panel__send"
+                    (click)="send()"
+                    [disabled]="!inputText.trim() || loading()">
+                Send
+            </button>
+        </div>
+    </div>
+
+    </div>
+
+</div>
