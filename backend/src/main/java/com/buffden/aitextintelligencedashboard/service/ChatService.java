@@ -3,6 +3,7 @@ package com.buffden.aitextintelligencedashboard.service;
 import com.buffden.aitextintelligencedashboard.dto.ChatHistoryItem;
 import com.buffden.aitextintelligencedashboard.dto.ChatReply;
 import com.buffden.aitextintelligencedashboard.dto.ChatRequest;
+import com.buffden.aitextintelligencedashboard.dto.ConversationSummary;
 import com.buffden.aitextintelligencedashboard.repository.ConversationStore;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -70,6 +72,24 @@ public class ChatService {
                 .map(msg -> new ChatHistoryItem(
                         msg.getMessageType().getValue(),
                         msg.getText()))
+                .toList();
+    }
+
+    public List<ConversationSummary> listConversations() {
+        return conversationStore.listAll().stream()
+                .map(snapshot -> {
+                    String title = snapshot.messages().stream()
+                            .filter(m -> m instanceof UserMessage)
+                            .findFirst()
+                            .map(m -> {
+                                String text = m.getText();
+                                return text.length() > 60 ? text.substring(0, 60) + "..." : text;
+                            })
+                            .orElse("New conversation");
+                    return new ConversationSummary(
+                            snapshot.id(), title, snapshot.createdAt(), snapshot.messages().size());
+                })
+                .sorted(Comparator.comparing(ConversationSummary::getCreatedAt).reversed())
                 .toList();
     }
 }

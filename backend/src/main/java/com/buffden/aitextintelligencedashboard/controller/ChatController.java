@@ -3,6 +3,7 @@ package com.buffden.aitextintelligencedashboard.controller;
 import com.buffden.aitextintelligencedashboard.dto.ChatHistoryItem;
 import com.buffden.aitextintelligencedashboard.dto.ChatReply;
 import com.buffden.aitextintelligencedashboard.dto.ChatRequest;
+import com.buffden.aitextintelligencedashboard.dto.ConversationSummary;
 import com.buffden.aitextintelligencedashboard.service.ChatService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
@@ -29,5 +30,10 @@ public class ChatController {
     @GetMapping("/{conversationId}/history")
     public List<ChatHistoryItem> history(@PathVariable String conversationId) {
         return chatService.getHistory(conversationId);
+    }
+    // returns all active conversations
+    @GetMapping("/conversations")
+    public List<ConversationSummary> conversations() {
+        return chatService.listConversations();
     }
 }
