@@ -222,7 +222,7 @@ ErrorResponse --> ErrorCode : uses
 LlmUnavailableException --|> RuntimeException
 ParseException --|> RuntimeException
 
-' ── External dependency (Spring AI) ───────────────────────────
+' ── External dependency (Spring AI / ChatClient) ───────────────
 class ChatClient <<external>> {
   + call(prompt: Prompt): ChatResponse
   ' Week 4 — key streaming method
