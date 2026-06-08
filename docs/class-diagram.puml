@@ -1,4 +1,5 @@
 @startuml class-diagram
+' Phase 1 — AI Text Intelligence Dashboard — complete class diagram
 
 skinparam classAttributeIconSize 0
 skinparam classFontStyle bold
