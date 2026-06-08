@@ -1,0 +1,86 @@
+name: Diagram Sync
+
+on:
+  pull_request:
+    paths:
+      - '**/*.puml'
+      - '**/*.plantuml'
+      - '**/*.excalidraw'
+
+  push:
+    branches: [main]
+    paths:
+      - '**/*.puml'
+      - '**/*.plantuml'
+      - '**/*.excalidraw'
+
+  workflow_dispatch:
+
+jobs:
+  preview:
+    name: Generate Preview
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install PlantUML
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends default-jre-headless plantuml
+
+      - name: Install Excalidraw CLI
+        run: npm install -g @swiftlysingh/excalidraw-cli
+
+      - name: Generate diagrams
+        run: npx diagram-sync
+
+      - name: Upload diagram previews
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagrams-preview
+          path: diagrams/
+
+  commit:
+    name: Generate and Commit
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install PlantUML
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends default-jre-headless plantuml
+
+      - name: Install Excalidraw CLI
+        run: npm install -g @swiftlysingh/excalidraw-cli
+
+      - name: Generate diagrams
+        run: npx diagram-sync
+
+      - name: Commit generated diagrams
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add diagrams/
+          if git diff --staged --quiet; then
+            echo "No diagram changes to commit."
+          else
+            git commit -m "chore: auto-export diagrams [skip ci]"
+            git push
+          fi
