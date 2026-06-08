@@ -229,4 +229,9 @@ class ChatClient <<external>> {
   + stream(prompt: Prompt): Flux<String>
 }
 
+note bottom of ConversationStore
+  In-memory only (Phase 1).
+  Sliding window + scheduled cleanup.
+end note
+
 @enduml
